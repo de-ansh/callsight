@@ -30,14 +30,24 @@ def analyze_text_with_transcript(
     extra_competitors: Sequence[str] = (),
 ) -> tuple[Transcript, CallReport]:
     """Like analyze_text, but also returns the parsed transcript (needed to persist segments)."""
+    load_builtins()
+    transcript = create("asr", "text").transcribe(text, call_id)
+    return transcript, analyze_transcript(transcript, settings=settings, extra_competitors=extra_competitors)
+
+
+def analyze_transcript(
+    transcript: Transcript,
+    *,
+    settings: Settings | None = None,
+    extra_competitors: Sequence[str] = (),
+) -> CallReport:
+    """Run the configured analyzers (and optional LLM summary) over an existing transcript."""
     settings = settings or Settings.from_env()
     load_builtins()
-
-    transcript = create("asr", "text").transcribe(text, call_id)
     competitors = tuple(dict.fromkeys((*settings.competitors, *extra_competitors)))
     analyzers = build_analyzers(DEFAULT_ANALYZERS, competitors=competitors, rep_names=settings.rep_names)
 
     llm = None
     if settings.llm_provider != "none":
         llm = create("llm", settings.llm_provider, base_url=settings.ollama_url, model=settings.ollama_model)
-    return transcript, analyze(transcript, analyzers, llm)
+    return analyze(transcript, analyzers, llm)

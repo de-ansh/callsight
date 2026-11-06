@@ -17,7 +17,9 @@ services:
       retries: 10
 
   minio:
-    image: minio/minio
+    # MinIO stopped publishing free images (minio/minio is gone from Docker Hub); this is Chainguard's
+    # rebuild of current MinIO. Pinned by digest: bump deliberately.
+    image: cgr.dev/chainguard/minio@sha256:aea6c163749e1caca37f907976dcf337177ddf5f558808f2aa591618fd3a6eef
     command: server /data --console-address ":9001"
     environment:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-callsight}
@@ -27,18 +29,29 @@ services:
     ports:
       - "9000:9000"
       - "9001:9001"
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
 
   api:
     build: ./services/api
-    environment:
+    environment: &callsight-env
       CALLSIGHT_DATABASE_URL: postgresql://${POSTGRES_USER:-callsight}:${POSTGRES_PASSWORD:-callsight-dev-only}@db:5432/${POSTGRES_DB:-callsight}
       CALLSIGHT_LLM_PROVIDER: ${CALLSIGHT_LLM_PROVIDER:-none}
       CALLSIGHT_OLLAMA_URL: ${CALLSIGHT_OLLAMA_URL:-http://ollama:11434}
       CALLSIGHT_OLLAMA_MODEL: ${CALLSIGHT_OLLAMA_MODEL:-llama3.1}
       CALLSIGHT_COMPETITORS: ${CALLSIGHT_COMPETITORS:-}
       CALLSIGHT_REP_NAMES: ${CALLSIGHT_REP_NAMES:-}
-    depends_on:
+      CALLSIGHT_S3_ENDPOINT: minio:9000
+      CALLSIGHT_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-callsight}
+      CALLSIGHT_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-callsight-dev-only}
+      CALLSIGHT_WHISPER_MODEL: ${CALLSIGHT_WHISPER_MODEL:-small}
+    depends_on: &callsight-deps
       db:
+        condition: service_healthy
+      minio:
         condition: service_healthy
     ports:
       - "8000:8000"
@@ -47,6 +60,15 @@ services:
       interval: 10s
       timeout: 3s
       retries: 5
+
+  # Transcribes and analyzes uploaded recordings. Scale with: docker compose up --scale worker=2
+  worker:
+    build: ./services/api
+    command: ["python", "-m", "callsight.worker"]
+    environment: *callsight-env
+    depends_on: *callsight-deps
+    volumes:
+      - whisper-cache:/home/appuser/.cache
 
   # Optional local LLM. Start with: docker compose --profile local-llm up
   ollama:
@@ -59,3 +81,4 @@ volumes:
   db-data:
   minio-data:
   ollama-data:
+  whisper-cache:

@@ -1,0 +1,122 @@
+"""Audio path: channel merge, upload validation, and upload -> worker -> stored report.
+
+The end-to-end test needs CALLSIGHT_TEST_DATABASE_URL and CALLSIGHT_TEST_S3_ENDPOINT
+(MinIO, credentials in CALLSIGHT_TEST_S3_ACCESS_KEY / _SECRET_KEY). It swaps Whisper for a
+fake ASR so it stays fast; real Whisper was checked by hand on a stereo rendering of
+examples/sample_call.txt (macOS `say`, one voice per channel).
+"""
+
+import io
+import os
+
+import pytest
+
+from callsight.models import Segment, Transcript
+from callsight.providers.whisper_asr import merge_channels
+
+
+def test_merge_channels_interleaves_by_time_and_drops_blank_text():
+    merged = merge_channels([
+        ("Speaker 1", [(0.0, " Hi there."), (9.5, "Price is fine."), (12.0, "  ")]),
+        ("Speaker 2", [(4.2, "Hello!")]),
+    ])
+    assert merged == [
+        Segment(0, 0.0, "Speaker 1", "Hi there."),
+        Segment(1, 4.2, "Speaker 2", "Hello!"),
+        Segment(2, 9.5, "Speaker 1", "Price is fine."),
+    ]
+
+
+pytest.importorskip("fastapi")
+from fastapi.testclient import TestClient  # noqa: E402
+
+from callsight import worker  # noqa: E402
+from callsight.api import app  # noqa: E402
+from callsight.config import Settings  # noqa: E402
+
+client = TestClient(app)
+
+
+@pytest.fixture
+def dummy_backends(monkeypatch):
+    # Validation runs before any connection is made, so unreachable addresses are fine here.
+    monkeypatch.setenv("CALLSIGHT_DATABASE_URL", "postgresql://unused@127.0.0.1:1/x")
+    monkeypatch.setenv("CALLSIGHT_S3_ENDPOINT", "127.0.0.1:1")
+
+
+def upload(name: str, data: bytes, **form):
+    return client.post("/v1/calls/upload", files={"file": (name, io.BytesIO(data))}, data=form)
+
+
+def test_upload_rejects_unsupported_type(dummy_backends):
+    assert upload("notes.txt", b"hello").status_code == 415
+    assert upload("../../etc/passwd", b"x").status_code == 415
+
+
+def test_upload_rejects_empty_file(dummy_backends):
+    assert upload("call.wav", b"").status_code == 422
+
+
+def test_upload_needs_storage(monkeypatch):
+    monkeypatch.setenv("CALLSIGHT_DATABASE_URL", "postgresql://unused@127.0.0.1:1/x")
+    monkeypatch.delenv("CALLSIGHT_S3_ENDPOINT", raising=False)
+    assert upload("call.wav", b"RIFF").status_code == 503
+
+
+DB_URL = os.environ.get("CALLSIGHT_TEST_DATABASE_URL")
+S3 = os.environ.get("CALLSIGHT_TEST_S3_ENDPOINT")
+
+
+class FakeASR:
+    def __init__(self):
+        self.paths = []
+
+    def transcribe(self, source, call_id):
+        self.paths.append(source)
+        assert open(source, "rb").read() == b"fake-audio-bytes"  # the worker got the uploaded object
+        return Transcript(call_id, [
+            Segment(0, 0.0, "Speaker 1", "Thanks for joining."),
+            Segment(1, 5.0, "Speaker 2", "Honestly the price is too expensive."),
+        ])
+
+
+class BrokenASR:
+    def transcribe(self, source, call_id):
+        raise ValueError("no speech found in the recording")
+
+
+@pytest.mark.skipif(not (DB_URL and S3), reason="needs CALLSIGHT_TEST_DATABASE_URL and CALLSIGHT_TEST_S3_ENDPOINT")
+def test_upload_is_processed_by_worker(monkeypatch):
+    monkeypatch.setenv("CALLSIGHT_DATABASE_URL", DB_URL)
+    monkeypatch.setenv("CALLSIGHT_S3_ENDPOINT", S3)
+    monkeypatch.setenv("CALLSIGHT_S3_ACCESS_KEY", os.environ["CALLSIGHT_TEST_S3_ACCESS_KEY"])
+    monkeypatch.setenv("CALLSIGHT_S3_SECRET_KEY", os.environ["CALLSIGHT_TEST_S3_SECRET_KEY"])
+    settings = Settings.from_env()
+    while worker.process_one(settings, BrokenASR()):  # drain jobs left by earlier runs
+        pass
+
+    ok = upload("call.mp3", b"fake-audio-bytes", call_id="audio-ok")
+    bad = upload("call.wav", b"fake-audio-bytes", call_id="audio-bad")
+    assert ok.status_code == bad.status_code == 202
+    assert client.get(f"/v1/calls/{ok.json()['id']}").json()["status"] == "queued"
+
+    assert worker.process_one(settings, FakeASR())
+    assert worker.process_one(settings, BrokenASR())
+    assert not worker.process_one(settings, FakeASR())  # queue empty
+
+    done = client.get(f"/v1/calls/{ok.json()['id']}").json()
+    assert done["status"] == "done" and done["call_id"] == "audio-ok"
+    assert done["speakers"] == ["Speaker 1", "Speaker 2"]
+    assert any(i["kind"] == "pricing_objection" for i in done["insights"])
+
+    failed = client.get(f"/v1/calls/{bad.json()['id']}").json()
+    assert failed["status"] == "failed" and "no speech" in failed["error"]
+
+
+def test_split_on_pauses_starts_a_turn_at_each_silence():
+    from callsight.providers.whisper_asr import split_on_pauses
+
+    words = [(0.0, 0.4, " Thanks"), (0.5, 0.9, " for"), (1.0, 1.5, " joining."),
+             (38.0, 38.5, " Understood,"), (38.6, 39.0, " sure.")]
+    assert split_on_pauses(words) == [(0.0, "Thanks for joining."), (38.0, "Understood, sure.")]
+    assert split_on_pauses([]) == []

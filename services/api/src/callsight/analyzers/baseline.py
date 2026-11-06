@@ -27,6 +27,12 @@ _NEXT_STEP = re.compile(
 _COMMITMENT = re.compile(r"\b(I'll|I will)\b[^.?!]*[.?!]?", re.I)
 
 
+def _name_pattern(name: str) -> re.Pattern:
+    """Match a name whatever the spacing: speech-to-text writes "AcmeCall" as "Acme call" or "ACME-Call"."""
+    parts = re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+", name) or [name]
+    return re.compile(r"\b" + r"[\s.\-]{0,2}".join(re.escape(p) for p in parts) + r"\b", re.I)
+
+
 def _evidence(segment: Segment) -> Evidence:
     quote = segment.text if len(segment.text) <= QUOTE_MAX_CHARS else segment.text[:QUOTE_MAX_CHARS] + "..."
     return Evidence(segment.id, segment.start_s, segment.speaker, quote)
@@ -102,7 +108,7 @@ class ObjectionAnalyzer(_Base):
                 )
 
         for competitor in self.competitors:
-            pattern = re.compile(rf"\b{re.escape(competitor)}\b", re.I)
+            pattern = _name_pattern(competitor)
             hits = [s for s in transcript.segments if pattern.search(s.text)]
             if hits:
                 insights.append(

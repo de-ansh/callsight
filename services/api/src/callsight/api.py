@@ -2,16 +2,25 @@
 
 from __future__ import annotations
 
-from uuid import UUID
+from pathlib import PurePath
+from uuid import UUID, uuid4
 
-from fastapi import FastAPI, HTTPException, Query
+from fastapi import FastAPI, File, Form, HTTPException, Query, UploadFile
 from pydantic import BaseModel, Field
 
-from . import __version__, store
+from . import __version__, recordings, store
 from .config import Settings
 from .service import analyze_text_with_transcript
 
 app = FastAPI(title="Callsight", version=__version__)
+
+AUDIO_TYPES = {
+    ".wav": "audio/wav", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".ogg": "audio/ogg",
+    ".flac": "audio/flac", ".webm": "audio/webm", ".mp4": "video/mp4",
+}
+# shortcut: checked after the body is received (spooled to disk); set a matching body limit in a
+# reverse proxy before exposing the API publicly.
+MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # about 8 hours of 128 kbps mp3
 
 
 class AnalyzeRequest(BaseModel):
@@ -46,6 +55,30 @@ def analyze_call(request: AnalyzeRequest) -> dict:
         with store.connect(settings.database_url) as conn:
             result["id"] = store.save_call(conn, transcript, report)
     return result
+
+
+@app.post("/v1/calls/upload", status_code=202)
+def upload_call(file: UploadFile = File(...), call_id: str = Form("upload")) -> dict:
+    """Store a recording and queue it for transcription and analysis by the worker."""
+    settings = Settings.from_env()
+    database_url = _database_url(settings)
+    if not settings.s3_endpoint:
+        raise HTTPException(status_code=503, detail="Audio upload is disabled: CALLSIGHT_S3_ENDPOINT is not set")
+    ext = PurePath(file.filename or "").suffix.lower()
+    if ext not in AUDIO_TYPES:
+        raise HTTPException(status_code=415, detail=f"Unsupported file type; expected one of {sorted(AUDIO_TYPES)}")
+    if not file.size:
+        raise HTTPException(status_code=422, detail="Empty file")
+    if file.size > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail=f"File larger than {MAX_UPLOAD_BYTES // 2**20} MB")
+
+    new_id = uuid4()
+    key = f"{new_id}/recording{ext}"  # never the client's filename: it is untrusted
+    # Object first, row second: a failed insert leaves only an orphan object, never a job without audio.
+    recordings.put(settings, key, file.file, file.size, AUDIO_TYPES[ext])
+    with store.connect(database_url) as conn:
+        store.create_queued_call(conn, new_id, call_id, key)
+    return {"id": new_id, "status": "queued"}
 
 
 @app.get("/v1/calls")

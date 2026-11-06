@@ -28,8 +28,9 @@ pain still need to be checked before building past week 2 of the roadmap.*
 | Optional LLM summary via local Ollama | Written, **not yet run against a live Ollama** |
 | CLI and HTTP API (`/health`, `POST /v1/analyze`, `GET /v1/calls`, `GET /v1/calls/{id}`) | Working, tested |
 | Postgres persistence (calls, segments, insights with evidence) when `CALLSIGHT_DATABASE_URL` is set | Working, tested against Postgres 16 (`CALLSIGHT_TEST_DATABASE_URL=... pytest`) |
-| `docker-compose.yml` (Postgres+pgvector, MinIO, API, optional Ollama) | `db` and `api` built and run; MinIO and Ollama not started |
-| Audio upload, ASR, connectors, UI, auth | Not started |
+| Audio: `POST /v1/calls/upload` → MinIO → background worker (faster-whisper, speakers split by stereo channel) → stored report | Working, tested: full stack verified with a real 2-min stereo call (about 50 s to transcribe on CPU in Docker) |
+| `docker-compose.yml` (Postgres+pgvector, MinIO, API, worker, optional Ollama) | `db`, `minio`, `api` and `worker` built and run. MinIO is Chainguard's build (`minio/minio` is no longer published), pinned by digest |
+| Mono-recording speaker separation, connectors, UI, auth | Not started |
 
 ## Try it (no dependencies beyond Python 3.10+)
 

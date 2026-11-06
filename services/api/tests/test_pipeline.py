@@ -192,3 +192,10 @@ def test_sample_call_end_to_end():
             "no_next_step", "action_item"} <= found
     assert report.insights[0].severity == "high"
     assert report.to_dict()["call_id"] == "sample"
+
+
+def test_competitor_matches_speech_to_text_spacing():
+    t = parse("[00:00] Alex: Hi\n[00:05] Priya: The quote from ACME call was lower.\n[00:09] Priya: Acme calling back?")
+    report = analyze(t, build_analyzers(["objections"], competitors=("AcmeCall",)))
+    insight = next(i for i in report.insights if i.kind == "competitor_mention")
+    assert [e.segment_id for e in insight.evidence] == [1]  # "Acme calling" is not a mention
