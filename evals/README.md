@@ -42,7 +42,7 @@ direction, not a benchmark. Replace them with labelled real calls once there are
 | Kind | Rules: precision / recall | `llm_insights`, llama3.2:3b: precision / recall |
 |---|---|---|
 | pricing_objection | 67% / 40% | **75% / 60%** |
-| timing_objection | 33% / 25% | **67% / 50%** |
+| timing_objection | 100% / 25% | **67% / 50%** |
 | authority_objection | – / 0% (no rule) | **100% / 100%** (1 label) |
 | need_objection | – / 0% (no rule) | 25% / 50% |
 | competitor_mention | **100% / 100%** | – (not its job) |
@@ -66,7 +66,7 @@ model for objections and next steps), not a replacement.
 | Kind | Rules | LLM only | Hybrid |
 |---|---|---|---|
 | pricing_objection | 67% / 40% | 75% / 60% | **100% / 80%** |
-| timing_objection | 33% / 25% | 67% / 50% | 67% / 50% |
+| timing_objection | 100% / 25% | 67% / 50% | 67% / 50% |
 | authority_objection | – / 0% | 100% / 100% | – / 0% |
 | need_objection | – / 0% | 25% / 50% | 33% / 50% |
 | competitor_mention | 100% / 100% | – | **100% / 100%** |
@@ -85,9 +85,11 @@ objection on line 3 in 7 of 10 calls and "no next step" on every call (pricing p
 The prompt now describes the answer format without example values. Check for this pattern
 (the same line number recurring across calls in `-v` output) whenever the prompt changes.
 
+The rules' timing precision was 33% until a polite "Not right now, thanks." answering "anything
+else?" stopped counting as an objection (both false positives were that pattern).
+
 Where the rules fail: objections without trigger words ("more than we can spend", "circle
-back in March"), "price isn't the issue" read as a price objection, a polite "not right now"
-read as a timing objection, and next steps booked without trigger words ("Thursday at 10").
+back in March"), "price isn't the issue" read as a price objection, and next steps booked without trigger words ("Thursday at 10").
 
 `tests/test_llm_analyzer.py::test_baseline_scores_are_stable` pins the baseline counts, so a
 change to the rules shows up as a test diff.

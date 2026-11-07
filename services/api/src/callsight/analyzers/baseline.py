@@ -20,6 +20,9 @@ MAX_EVIDENCE = 5
 
 _PRICING = re.compile(r"\b(too expensive|expensive|budget|pric(?:e|es|ing)|discount|cheaper|costs?)\b", re.I)
 _TIMING = re.compile(r"\b(next quarter|next year|not a priority|not right now|bad timing|revisit)\b", re.I)
+# "Anything else I can help with?" - "Not right now, thanks." is a polite close, not an objection.
+_ANYTHING_ELSE = re.compile(r"\banything else\b[^.!]*\?", re.I)
+_POLITE_NO = re.compile(r"^\W*(no,?\s*)?not right now\b[\s,.!]*(thanks?|thank you)?\b[^?]{0,40}$", re.I)
 _NEXT_STEP = re.compile(
     r"\b(next steps?|follow[- ]up|schedule|calendar|send (?:you|over)|book a|set up a|let'?s meet|demo on)\b",
     re.I,
@@ -31,6 +34,12 @@ def _name_pattern(name: str) -> re.Pattern:
     """Match a name whatever the spacing: speech-to-text writes "AcmeCall" as "Acme call" or "ACME-Call"."""
     parts = re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+", name) or [name]
     return re.compile(r"\b" + r"[\s.\-]{0,2}".join(re.escape(p) for p in parts) + r"\b", re.I)
+
+
+def _is_polite_close(transcript: Transcript, segment: Segment) -> bool:
+    """A short "not right now, thanks" straight after the rep asks "anything else...?"."""
+    previous = transcript.segments[segment.id - 1] if segment.id > 0 else None
+    return bool(previous and _ANYTHING_ELSE.search(previous.text) and _POLITE_NO.search(segment.text))
 
 
 def _evidence(segment: Segment) -> Evidence:
@@ -97,6 +106,8 @@ class ObjectionAnalyzer(_Base):
             ("timing_objection", "Timing or priority concern raised", _TIMING),
         ):
             hits = [s for s in prospect_segments if pattern.search(s.text)]
+            if kind == "timing_objection":
+                hits = [s for s in hits if not _is_polite_close(transcript, s)]
             if hits:
                 insights.append(
                     Insight(

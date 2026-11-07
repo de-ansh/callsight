@@ -147,6 +147,16 @@ def expired_calls(conn: psycopg.Connection, days: int, limit: int = 100) -> list
     ).fetchall()
 
 
+def org_competitors(conn: psycopg.Connection, org_id: UUID) -> tuple[str, ...]:
+    row = conn.execute("SELECT competitors FROM orgs WHERE id = %s", (org_id,)).fetchone()
+    return tuple(row["competitors"]) if row else ()
+
+
+def set_org_competitors(conn: psycopg.Connection, org_id: UUID, competitors: list[str]) -> None:
+    with conn.transaction():
+        conn.execute("UPDATE orgs SET competitors = %s WHERE id = %s", (competitors, org_id))
+
+
 def org_webhook_secret(conn: psycopg.Connection, org_id: UUID) -> str | None:
     row = conn.execute("SELECT webhook_secret FROM orgs WHERE id = %s", (org_id,)).fetchone()
     return row["webhook_secret"] if row else None
@@ -161,7 +171,7 @@ def claim_job(conn: psycopg.Connection) -> dict[str, Any] | None:
             "   WHERE status = 'queued'"
             f"     OR (status = 'processing' AND claimed_at < now() - interval '{STALE_CLAIM}')"
             "   ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1)"
-            " RETURNING id, external_id, recording_key, recording_url"
+            " RETURNING id, org_id, external_id, recording_key, recording_url"
         ).fetchone()
 
 

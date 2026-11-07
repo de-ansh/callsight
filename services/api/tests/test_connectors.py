@@ -110,6 +110,7 @@ def webhook_env(monkeypatch):
     monkeypatch.setenv("CALLSIGHT_DATABASE_URL", "postgresql://unused@127.0.0.1:1/x")
     monkeypatch.setattr(store, "connect", lambda url: nullcontext(None))
     monkeypatch.setattr(store, "org_webhook_secret", lambda conn, org_id: SECRET if org_id == FAKE_ORG else None)
+    monkeypatch.setattr(store, "org_competitors", lambda conn, org_id: ())
 
 
 def test_webhook_rejects_bad_signature(webhook_env):

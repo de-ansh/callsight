@@ -6,80 +6,156 @@
 <title>Callsight</title>
 <style>
   :root {
-    --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc;
-    --accent: #2f5bd3; --on-accent: #ffffff; --accent-soft: #e6ecfb; --high: #b42318; --medium: #a15c07; --low: #3f6212;
-    --info: #475467; --mark: #fff3c4;
+    --bg: #f6f6f3; --panel: #ffffff; --raised: #fbfbf9; --text: #1d1d1b; --muted: #6b6b66; --line: #e4e3dd;
+    --accent: #2f5bd3; --on-accent: #ffffff; --accent-soft: #e8eefc;
+    --high: #b42318; --high-soft: #fdecea; --medium: #9a5b06; --medium-soft: #fdf3e2;
+    --low: #3f6212; --low-soft: #edf5e3; --info: #475467; --info-soft: #eef0f3;
+    --mark: #fff1b8; --spk-a: #2f5bd3; --spk-b: #b5179e;
+    --radius: 10px; --shadow: 0 1px 2px rgba(20, 20, 18, .05);
   }
   @media (prefers-color-scheme: dark) {
     :root {
-      --bg: #151514; --panel: #1f1f1d; --text: #ecebe6; --muted: #a3a29b; --line: #34332f;
-      --accent: #8aa8ff; --on-accent: #10172e; --accent-soft: #263152; --high: #ff8a80; --medium: #f5b955; --low: #a3d97a;
-      --info: #b8c0cc; --mark: #4a3f10;
+      --bg: #141413; --panel: #1d1d1b; --raised: #232321; --text: #ecebe6; --muted: #a3a29b; --line: #33322e;
+      --accent: #8aa8ff; --on-accent: #10172e; --accent-soft: #232c45;
+      --high: #ff8a80; --high-soft: #3a1f1d; --medium: #f5b955; --medium-soft: #372b17;
+      --low: #a3d97a; --low-soft: #223019; --info: #b8c0cc; --info-soft: #262a30;
+      --mark: #4a3f10; --spk-a: #8aa8ff; --spk-b: #f08bdc; --shadow: none;
     }
   }
   * { box-sizing: border-box; }
+  html { scroll-padding-top: 70px; }
   body { margin: 0; background: var(--bg); color: var(--text);
          font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
-  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px;
-           border-bottom: 1px solid var(--line); background: var(--panel); }
-  header a { color: var(--text); text-decoration: none; font-weight: 650; font-size: 17px; }
-  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
-  h2 { font-size: 16px; margin: 24px 0 10px; }
-  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
-  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
-  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
-  label { display: block; font-size: 13px; color: var(--muted); margin: 8px 0 4px; }
-  input[type=text], textarea { width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 6px;
-    background: var(--bg); color: var(--text); font: inherit; }
-  textarea { min-height: 110px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
-  button { font: inherit; cursor: pointer; border-radius: 6px; }
-  .primary { margin-top: 10px; padding: 7px 14px; border: 0; background: var(--accent); color: var(--on-accent); }
-  .primary:disabled { opacity: .5; cursor: default; }
-  .msg { font-size: 13px; margin-top: 8px; min-height: 1.2em; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button { font: inherit; cursor: pointer; border-radius: 7px; }
+  button:disabled { opacity: .5; cursor: default; }
+  code { font-family: ui-monospace, Menlo, monospace; font-size: 12.5px; }
+
+  /* ----- header */
+  header { position: sticky; top: 0; z-index: 5; display: flex; align-items: center; gap: 20px;
+           padding: 0 20px; height: 54px; background: var(--panel); border-bottom: 1px solid var(--line); }
+  .brand { font-weight: 700; font-size: 17px; color: var(--text); display: flex; align-items: center; gap: 8px; }
+  .brand:hover { text-decoration: none; }
+  .brand .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--accent); }
+  nav { display: flex; gap: 4px; }
+  nav a { color: var(--muted); padding: 6px 10px; border-radius: 7px; font-size: 14px; }
+  nav a:hover { color: var(--text); background: var(--raised); text-decoration: none; }
+  nav a[aria-current="page"] { color: var(--text); background: var(--accent-soft); font-weight: 600; }
+  .spacer { flex: 1; }
+  .version { color: var(--muted); font-size: 12px; }
+  .linklike { border: 0; background: none; color: var(--muted); font-size: 14px; padding: 6px 8px; }
+  .linklike:hover { color: var(--text); }
+  @media (max-width: 640px) { .version, .linklike { display: none; } header { gap: 10px; padding: 0 12px; } }
+
+  main { max-width: 1160px; margin: 0 auto; padding: 24px 16px 64px; }
+  .page-head { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 16px; }
+  h1 { font-size: 22px; margin: 0; }
+  h2 { font-size: 15px; margin: 0 0 10px; }
+  .count { color: var(--muted); font-size: 14px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius);
+           box-shadow: var(--shadow); padding: 16px; }
+  .meta { color: var(--muted); font-size: 13px; }
+  .msg { font-size: 13px; min-height: 1.2em; margin-top: 8px; }
   .error { color: var(--high); }
+  .empty { color: var(--muted); padding: 28px 0; text-align: center; }
+
+  /* ----- buttons, inputs */
+  .btn { padding: 7px 14px; border: 1px solid var(--line); background: var(--panel); color: var(--text); }
+  .btn:hover { background: var(--raised); }
+  .btn.primary { background: var(--accent); border-color: var(--accent); color: var(--on-accent); font-weight: 600; }
+  .btn.primary:hover { filter: brightness(1.05); }
+  .btn.danger { border-color: var(--high); color: var(--high); background: none; }
+  .btn.danger:hover { background: var(--high-soft); }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
+  input[type=text], input[type=search], textarea, select {
+    width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px;
+    background: var(--raised); color: var(--text); font: inherit; }
+  textarea { min-height: 120px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+  input[type=file] { font-size: 14px; color: var(--muted); max-width: 100%; }
+
+  /* ----- add-a-call panel */
+  .tabs { display: flex; gap: 4px; border-bottom: 1px solid var(--line); margin: -4px -4px 4px; }
+  .tab { border: 0; background: none; color: var(--muted); padding: 8px 12px; border-radius: 7px 7px 0 0;
+         border-bottom: 2px solid transparent; }
+  .tab[aria-selected="true"] { color: var(--text); border-bottom-color: var(--accent); font-weight: 600; }
+  .add { margin-bottom: 16px; }
+  .add-row { display: flex; gap: 12px; align-items: end; flex-wrap: wrap; }
+  .add-row > div { flex: 1; min-width: 220px; }
+
+  /* ----- calls table */
+  .toolbar { display: flex; gap: 10px; margin-bottom: 8px; flex-wrap: wrap; }
+  .toolbar input { flex: 1; min-width: 200px; }
+  .toolbar select { width: auto; }
   table { width: 100%; border-collapse: collapse; }
-  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 14px; }
-  th { color: var(--muted); font-weight: 500; font-size: 13px; }
-  tbody tr:hover { background: var(--accent-soft); }
-  td a { color: var(--accent); }
-  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px;
-           border: 1px solid currentColor; }
-  .s-high { color: var(--high); } .s-medium { color: var(--medium); }
-  .s-low { color: var(--low); } .s-info { color: var(--info); }
+  th, td { text-align: left; padding: 10px; border-bottom: 1px solid var(--line); font-size: 14px; vertical-align: middle; }
+  th { color: var(--muted); font-weight: 500; font-size: 12px; text-transform: uppercase; letter-spacing: .03em; }
+  tbody tr.clickable { cursor: pointer; }
+  tbody tr.clickable:hover { background: var(--raised); }
+  tbody tr:last-child td { border-bottom: 0; }
+  .callname { font-weight: 600; color: var(--text); }
+  .sub { display: block; color: var(--muted); font-size: 12px; }
+  @media (max-width: 720px) { .hide-sm { display: none; } }
+
+  .chip { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px; font-weight: 600;
+          margin-right: 4px; white-space: nowrap; }
+  .c-high { color: var(--high); background: var(--high-soft); }
+  .c-medium { color: var(--medium); background: var(--medium-soft); }
+  .c-low { color: var(--low); background: var(--low-soft); }
+  .c-info { color: var(--info); background: var(--info-soft); }
+  .status { font-size: 12px; font-weight: 600; text-transform: capitalize; white-space: nowrap; }
+  .status::before { content: ""; display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+                    margin-right: 6px; background: currentColor; vertical-align: 1px; }
   .st-done { color: var(--low); } .st-failed { color: var(--high); }
   .st-queued, .st-processing { color: var(--medium); }
+
+  /* ----- call page */
   .detail { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 16px; align-items: start; }
-  @media (max-width: 860px) { .detail { grid-template-columns: 1fr; } }
-  .insight { padding: 10px 0; border-bottom: 1px solid var(--line); }
-  .insight:last-child { border-bottom: 0; }
+  @media (max-width: 900px) { .detail { grid-template-columns: 1fr; } }
+  .summary p { margin: 0 0 12px; }
+  .talk { display: flex; height: 8px; border-radius: 99px; overflow: hidden; background: var(--line); margin: 6px 0; }
+  .legend { display: flex; gap: 14px; flex-wrap: wrap; font-size: 13px; color: var(--muted); }
+  .legend i { display: inline-block; width: 9px; height: 9px; border-radius: 50%; margin-right: 6px; }
+  .group { margin-top: 16px; }
+  .group-title { font-size: 12px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted);
+                 margin: 0 0 6px; display: flex; gap: 8px; align-items: center; }
+  .insight { padding: 10px 12px; border: 1px solid var(--line); border-left-width: 3px; border-radius: 8px;
+             margin-bottom: 8px; background: var(--panel); }
+  .insight.s-high { border-left-color: var(--high); } .insight.s-medium { border-left-color: var(--medium); }
+  .insight.s-low { border-left-color: var(--low); } .insight.s-info { border-left-color: var(--line); }
   .insight .title { font-weight: 600; }
   .insight .why { color: var(--muted); font-size: 13px; }
-  .ev { display: block; width: 100%; text-align: left; margin-top: 6px; padding: 6px 8px;
-        border: 1px solid var(--line); background: var(--bg); color: var(--text); font-size: 13px; }
-  .ev:hover, .ev:focus-visible { border-color: var(--accent); outline: none; }
+  .ev { display: block; width: 100%; text-align: left; margin-top: 6px; padding: 6px 8px; font-size: 13px;
+        border: 1px solid var(--line); background: var(--raised); color: var(--text); }
+  .ev:hover { border-color: var(--accent); }
   .ts { font-family: ui-monospace, Menlo, monospace; color: var(--accent); font-size: 12px; }
-  .transcript { max-height: 70vh; overflow-y: auto; }
-  .seg { display: flex; gap: 10px; padding: 6px 8px; border-radius: 6px; }
+  .player { position: sticky; top: 66px; z-index: 2; background: var(--panel); padding-bottom: 8px; }
+  audio { width: 100%; }
+  .transcript { max-height: calc(100vh - 220px); overflow-y: auto; }
+  .seg { display: grid; grid-template-columns: 52px 1fr; gap: 8px; padding: 6px 8px; border-radius: 7px; }
   .seg.hit { background: var(--mark); }
-  .seg button.ts { border: 0; background: none; padding: 0; min-width: 44px; text-align: left; }
+  .seg button.ts { border: 0; background: none; padding: 2px 0; text-align: left; }
   .speaker { font-weight: 600; margin-right: 4px; }
-  audio { width: 100%; margin-bottom: 10px; }
-  .meta { color: var(--muted); font-size: 13px; }
-  .danger { margin-left: 12px; padding: 3px 10px; border: 1px solid var(--high); background: none;
-            color: var(--high); font-size: 13px; }
-  .empty { color: var(--muted); padding: 20px 0; }
-  .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
-  .toolbar input[type=search] { flex: 1; min-width: 200px; padding: 7px 8px; border: 1px solid var(--line);
-    border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
-  .toolbar select { padding: 7px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg);
-    color: var(--text); font: inherit; }
-  .sev { font-size: 13px; margin-right: 8px; white-space: nowrap; }
+  .spk-0 { color: var(--spk-a); } .spk-1 { color: var(--spk-b); }
+
+  /* ----- settings, sign-in */
+  .narrow { max-width: 640px; }
+  .help { color: var(--muted); font-size: 13px; margin: 4px 0 0; }
 </style>
 </head>
 <body>
-<header><a href="#/">Callsight</a><span class="meta" id="version"></span>
-  <span style="flex:1"></span><a href="#/audit" class="meta">Audit log</a>
-  <button type="button" class="meta" id="signout" style="border:0;background:none;color:var(--muted)">Change API key</button></header>
+<header>
+  <a class="brand" href="#/"><span class="dot" aria-hidden="true"></span>Callsight</a>
+  <nav aria-label="Main">
+    <a href="#/" data-nav="calls">Calls</a>
+    <a href="#/audit" data-nav="audit">Audit log</a>
+    <a href="#/settings" data-nav="settings">Settings</a>
+  </nav>
+  <span class="spacer"></span>
+  <span class="version" id="version"></span>
+  <button type="button" class="linklike" id="signout">Change API key</button>
+</header>
 <main id="app" aria-live="polite"></main>
 
 <script>
@@ -91,11 +167,15 @@ let pollTimer = null;
 function el(tag, attrs = {}, ...children) {
   const node = document.createElement(tag);
   for (const [k, v] of Object.entries(attrs)) {
+    if (v === undefined || v === null || v === false) continue;
     if (k === "class") node.className = v;
     else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
-    else node.setAttribute(k, v);
+    else node.setAttribute(k, v === true ? "" : v);
   }
-  for (const c of children) node.append(c instanceof Node ? c : document.createTextNode(String(c ?? "")));
+  for (const c of children) {
+    if (c === null || c === undefined || c === false || c === "") continue;
+    node.append(c instanceof Node ? c : document.createTextNode(String(c)));
+  }
   return node;
 }
 
@@ -105,12 +185,14 @@ function fmtTime(s) {
   const mm = String(m).padStart(2, "0"), ss = String(sec).padStart(2, "0");
   return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
+const fmtDate = iso => new Date(iso).toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
+const short = id => String(id).slice(0, 8);
 
 // The API key lives in this browser only (a per-viewer convenience); storage can be unavailable.
 const KEY_STORE = "callsight.apiKey";
-function getKey() { try { return localStorage.getItem(KEY_STORE) || ""; } catch { return sessionKey; } }
-function setKey(k) { sessionKey = k; try { k ? localStorage.setItem(KEY_STORE, k) : localStorage.removeItem(KEY_STORE); } catch {} }
 let sessionKey = "";
+function getKey() { try { return localStorage.getItem(KEY_STORE) || sessionKey; } catch { return sessionKey; } }
+function setKey(k) { sessionKey = k; try { k ? localStorage.setItem(KEY_STORE, k) : localStorage.removeItem(KEY_STORE); } catch {} }
 
 class AuthError extends Error {}
 
@@ -120,24 +202,11 @@ async function api(path, options = {}) {
   const res = await fetch(path, { ...options, headers });
   if (res.status === 401) throw new AuthError("Your API key is missing or no longer valid.");
   const body = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
-  if (!res.ok) throw new Error(body?.detail ? (typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail)) : `HTTP ${res.status}`);
+  if (!res.ok) {
+    const d = body?.detail;
+    throw new Error(!d ? `HTTP ${res.status}` : typeof d === "string" ? d : (Array.isArray(d) ? d.map(x => x.msg).join("; ") : JSON.stringify(d)));
+  }
   return body;
-}
-
-function badge(text, cls) { return el("span", { class: `badge ${cls}` }, text); }
-
-// ---------------------------------------------------------------- API key
-function showKeyForm(reason) {
-  clearTimeout(pollTimer);
-  const input = el("input", { type: "text", id: "apikey", autocomplete: "off", spellcheck: "false", placeholder: "cs_…" });
-  app.replaceChildren(el("form", { class: "panel", style: "max-width:520px", onsubmit: e => {
-      e.preventDefault(); setKey(input.value.trim()); route(); } },
-    el("strong", {}, "Enter your API key"),
-    reason ? el("p", { class: "error" }, reason) : "",
-    el("p", { class: "meta" }, "Ask your administrator, or create one with: python -m callsight.admin create-key --org <name> --name <you>"),
-    el("label", { for: "apikey" }, "API key"), input,
-    el("button", { class: "primary", type: "submit" }, "Continue")));
-  input.focus();
 }
 
 function handle(e) {
@@ -145,173 +214,288 @@ function handle(e) {
   return false;
 }
 
-// ---------------------------------------------------------------- audit view
-async function showAudit() {
-  clearTimeout(pollTimer);
-  let rows;
-  try { rows = await api("/v1/audit?limit=200"); }
-  catch (e) { if (!handle(e)) app.replaceChildren(el("p", { class: "error" }, e.message)); return; }
-  app.replaceChildren(el("a", { href: "#/" }, "← Calls"), el("h2", {}, "Audit log"),
-    el("div", { class: "panel" }, el("table", {},
-      el("thead", {}, el("tr", {}, el("th", {}, "When"), el("th", {}, "Who"), el("th", {}, "Action"), el("th", {}, "Target"))),
-      el("tbody", {}, ...rows.map(r => el("tr", {},
-        el("td", { class: "meta" }, new Date(r.at).toLocaleString()), el("td", {}, r.actor), el("td", {}, r.action),
-        el("td", {}, r.target && r.action.startsWith("call") ? el("a", { href: `#/calls/${r.target}` }, r.target.slice(0, 8)) : (r.target || ""))))))));
+function setNav(page) {
+  document.querySelectorAll("nav a").forEach(a => {
+    if (a.dataset.nav === page) a.setAttribute("aria-current", "page"); else a.removeAttribute("aria-current");
+  });
 }
 
-// ---------------------------------------------------------------- list view
-async function showList() {
-  const audioMsg = el("div", { class: "msg" });
-  const textMsg = el("div", { class: "msg" });
+function chip(sev, text) { return el("span", { class: `chip c-${sev}` }, text); }
+function statusTag(s) { return el("span", { class: `status st-${s}` }, s); }
+
+// ---------------------------------------------------------------- API key
+function showKeyForm(reason) {
+  clearTimeout(pollTimer);
+  setNav("");
+  const input = el("input", { type: "text", id: "apikey", autocomplete: "off", spellcheck: "false", placeholder: "cs_…" });
+  app.replaceChildren(el("form", { class: "panel narrow", style: "margin: 40px auto", onsubmit: e => {
+      e.preventDefault(); setKey(input.value.trim()); route(); } },
+    el("h1", {}, "Sign in with an API key"),
+    reason ? el("p", { class: "error" }, reason) : null,
+    el("p", { class: "meta" }, "Ask your administrator for a key, or create one with ",
+      el("code", {}, "python -m callsight.admin create-key --org <name> --name <you>"),
+      ". For a quick look, ", el("code", {}, "python -m callsight.admin demo"), " creates a demo workspace."),
+    el("label", { for: "apikey" }, "API key"), input,
+    el("div", { style: "margin-top: 14px" }, el("button", { class: "btn primary", type: "submit" }, "Continue"))));
+  input.focus();
+}
+
+// ---------------------------------------------------------------- calls
+function addCallPanel(onAdded) {
+  const msg = el("div", { class: "msg", role: "status" });
   const fileInput = el("input", { type: "file", id: "file", accept: ".wav,.mp3,.m4a,.ogg,.flac,.webm,.mp4" });
-  const audioId = el("input", { type: "text", id: "audio-id", placeholder: "e.g. acme-discovery-1" });
-  const textId = el("input", { type: "text", id: "text-id", placeholder: "e.g. acme-discovery-1" });
+  const audioName = el("input", { type: "text", id: "audio-name", placeholder: "e.g. acme-discovery-1" });
+  const textName = el("input", { type: "text", id: "text-name", placeholder: "e.g. acme-discovery-1" });
   const transcript = el("textarea", { id: "transcript", placeholder: "[00:00] Alex: Thanks for joining\n[00:05] Priya: The price is too high" });
 
-  async function submit(button, msg, run) {
+  async function submit(button, run) {
     button.disabled = true; msg.className = "msg"; msg.textContent = "Working…";
-    try { msg.textContent = await run(); loadCalls(); }
+    try { msg.textContent = await run(); onAdded(); }
     catch (e) { if (!handle(e)) { msg.className = "msg error"; msg.textContent = e.message; } }
     finally { button.disabled = false; }
   }
-  const uploadBtn = el("button", { class: "primary", type: "submit" }, "Upload recording");
-  const analyzeBtn = el("button", { class: "primary", type: "submit" }, "Analyze transcript");
+  const uploadBtn = el("button", { class: "btn primary", type: "submit" }, "Upload and analyze");
+  const pasteBtn = el("button", { class: "btn primary", type: "submit" }, "Analyze transcript");
 
+  const uploadForm = el("form", { onsubmit: e => { e.preventDefault();
+      if (!fileInput.files[0]) { msg.className = "msg error"; msg.textContent = "Choose a recording first."; return; }
+      submit(uploadBtn, async () => {
+        const form = new FormData();
+        form.append("file", fileInput.files[0]);
+        if (audioName.value.trim()) form.append("call_id", audioName.value.trim());
+        await api("/v1/calls/upload", { method: "POST", body: form });
+        fileInput.value = ""; audioName.value = "";
+        return "Uploaded. Transcription runs in the background; the list updates by itself.";
+      }); } },
+    el("div", { class: "add-row" },
+      el("div", {}, el("label", { for: "file" }, "Recording (wav, mp3, m4a, ogg, flac, webm, mp4)"), fileInput),
+      el("div", {}, el("label", { for: "audio-name" }, "Call name (optional)"), audioName),
+      uploadBtn),
+    el("p", { class: "help" }, "Stereo phone recordings get one speaker per channel. Nothing leaves your servers."));
+
+  const pasteForm = el("form", { hidden: true, onsubmit: e => { e.preventDefault();
+      submit(pasteBtn, async () => {
+        const r = await api("/v1/analyze", { method: "POST", headers: { "content-type": "application/json" },
+          body: JSON.stringify({ call_id: textName.value.trim() || "pasted", transcript: transcript.value }) });
+        location.hash = `#/calls/${r.id}`;
+        return "Analyzed.";
+      }); } },
+    el("label", { for: "text-name" }, "Call name (optional)"), textName,
+    el("label", { for: "transcript" }, "Transcript: one turn per line, [mm:ss] Speaker: text"), transcript,
+    el("div", { style: "margin-top: 10px" }, pasteBtn));
+
+  const tabs = [["Upload a recording", uploadForm], ["Paste a transcript", pasteForm]].map(([label, form], i) =>
+    el("button", { class: "tab", type: "button", role: "tab", "aria-selected": i === 0 ? "true" : "false",
+      onclick: e => {
+        tabs.forEach(t => t.setAttribute("aria-selected", "false")); e.currentTarget.setAttribute("aria-selected", "true");
+        uploadForm.hidden = form !== uploadForm; pasteForm.hidden = form !== pasteForm; msg.textContent = "";
+      } }, label));
+  return el("section", { class: "panel add", "aria-label": "Add a call" },
+    el("div", { class: "tabs", role: "tablist" }, ...tabs), uploadForm, pasteForm, msg);
+}
+
+async function showCalls() {
+  setNav("calls");
   const tbody = el("tbody");
-  const table = el("table", {}, el("thead", {}, el("tr", {},
-    el("th", {}, "Call"), el("th", {}, "Status"), el("th", {}, "Source"), el("th", {}, "Length"),
-    el("th", {}, "Insights"), el("th", {}, "Added"))), tbody);
-  const search = el("input", { type: "search", id: "search", placeholder: "Search call names and what was said…",
-    "aria-label": "Search calls" });
-  const statusFilter = el("select", { id: "status-filter", "aria-label": "Filter by status" },
+  const count = el("span", { class: "count" });
+  const search = el("input", { type: "search", placeholder: "Search call names and what was said…", "aria-label": "Search calls" });
+  const statusFilter = el("select", { "aria-label": "Filter by status" },
     el("option", { value: "" }, "All statuses"), ...["done", "queued", "processing", "failed"].map(s => el("option", { value: s }, s)));
+  const addSlot = el("div");
+  const addBtn = el("button", { class: "btn primary", type: "button", "aria-expanded": "false", onclick: () => toggleAdd() }, "+ Add a call");
+  function toggleAdd(open = addSlot.childElementCount === 0) {
+    addSlot.replaceChildren(...(open ? [addCallPanel(loadCalls)] : []));
+    addBtn.setAttribute("aria-expanded", String(open));
+    addBtn.textContent = open ? "Close" : "+ Add a call";
+  }
+
   let searchTimer = null;
   search.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(loadCalls, 300); });
   statusFilter.addEventListener("change", loadCalls);
 
   app.replaceChildren(
-    el("div", { class: "grid2" },
-      el("form", { class: "panel", onsubmit: e => { e.preventDefault();
-          if (!fileInput.files[0]) { audioMsg.className = "msg error"; audioMsg.textContent = "Choose a file first."; return; }
-          submit(uploadBtn, audioMsg, async () => {
-            const form = new FormData();
-            form.append("file", fileInput.files[0]);
-            if (audioId.value.trim()) form.append("call_id", audioId.value.trim());
-            await api("/v1/calls/upload", { method: "POST", body: form });
-            fileInput.value = "";
-            return "Uploaded. Transcription runs in the background; the list updates by itself.";
-          }); } },
-        el("strong", {}, "Upload a recording"),
-        el("div", { class: "meta" }, "Stereo phone recordings get one speaker per channel."),
-        el("label", { for: "file" }, "Audio file"), fileInput,
-        el("label", { for: "audio-id" }, "Call name (optional)"), audioId,
-        uploadBtn, audioMsg),
-      el("form", { class: "panel", onsubmit: e => { e.preventDefault();
-          submit(analyzeBtn, textMsg, async () => {
-            const r = await api("/v1/analyze", { method: "POST", headers: { "content-type": "application/json" },
-              body: JSON.stringify({ call_id: textId.value.trim() || "pasted", transcript: transcript.value }) });
-            location.hash = `#/calls/${r.id}`;
-            return "Analyzed.";
-          }); } },
-        el("strong", {}, "Paste a transcript"),
-        el("div", { class: "meta" }, "One turn per line: [mm:ss] Speaker: text"),
-        el("label", { for: "text-id" }, "Call name (optional)"), textId,
-        el("label", { for: "transcript" }, "Transcript"), transcript,
-        analyzeBtn, textMsg)),
-    el("h2", {}, "Calls"),
-    el("div", { class: "panel" }, el("div", { class: "toolbar" }, search, statusFilter), table));
+    el("div", { class: "page-head" }, el("h1", {}, "Calls"), count, el("span", { class: "spacer" }), addBtn),
+    addSlot,
+    el("section", { class: "panel" },
+      el("div", { class: "toolbar" }, search, statusFilter),
+      el("table", {},
+        el("thead", {}, el("tr", {}, el("th", {}, "Call"), el("th", {}, "Status"), el("th", { class: "hide-sm" }, "Length"),
+          el("th", {}, "Insights"), el("th", { class: "hide-sm" }, "Added"))),
+        tbody)));
 
   async function loadCalls() {
     clearTimeout(pollTimer);
-    let calls;
     const params = new URLSearchParams({ limit: "200" });
     if (search.value.trim()) params.set("q", search.value.trim());
     if (statusFilter.value) params.set("status", statusFilter.value);
+    let calls;
     try { calls = await api(`/v1/calls?${params}`); }
-    catch (e) { if (!handle(e)) tbody.replaceChildren(el("tr", {}, el("td", { colspan: 6, class: "error" }, e.message))); return; }
+    catch (e) { if (!handle(e)) tbody.replaceChildren(el("tr", {}, el("td", { colspan: 5, class: "error" }, e.message))); return; }
+    const filtered = search.value.trim() || statusFilter.value;
+    count.textContent = filtered ? `${calls.length} matching` : `${calls.length} total`;
     if (!calls.length) {
-      const filtered = search.value.trim() || statusFilter.value;
-      tbody.replaceChildren(el("tr", {}, el("td", { colspan: 6, class: "empty" },
-        filtered ? "No calls match." : "No calls yet. Upload a recording or paste a transcript.")));
+      tbody.replaceChildren(el("tr", {}, el("td", { colspan: 5, class: "empty" },
+        filtered ? "No calls match." : "No calls yet. Add one to see its insights.")));
+      if (!filtered && addSlot.childElementCount === 0) toggleAdd(true);
       return;
     }
-    tbody.replaceChildren(...calls.map(c => el("tr", {},
-      el("td", {}, el("a", { href: `#/calls/${c.id}` }, c.external_id || c.id)),
-      el("td", {}, badge(c.status, `st-${c.status}`)),
-      el("td", {}, c.source),
-      el("td", {}, c.duration_s == null ? "–" : fmtTime(c.duration_s)),
-      el("td", {}, c.status !== "done" ? "–" : (c.high_count || c.medium_count)
-        ? el("span", {}, c.high_count ? el("span", { class: "sev s-high" }, `${c.high_count} high`) : "",
-                         c.medium_count ? el("span", { class: "sev s-medium" }, `${c.medium_count} med`) : "",
-                         el("span", { class: "meta" }, `${c.insight_count} total`))
-        : el("span", { class: "meta" }, `${c.insight_count} total`)),
-      el("td", { class: "meta" }, new Date(c.created_at).toLocaleString()))));
+    tbody.replaceChildren(...calls.map(c => {
+      const href = `#/calls/${c.id}`;
+      const insights = c.status !== "done" ? el("span", { class: "meta" }, "–") : el("span", {},
+        c.high_count ? chip("high", `${c.high_count} high`) : null,
+        c.medium_count ? chip("medium", `${c.medium_count} med`) : null,
+        el("span", { class: "meta" }, c.high_count || c.medium_count ? `${c.insight_count} total` : `${c.insight_count} notes`));
+      return el("tr", { class: "clickable", onclick: e => { if (!e.target.closest("a")) location.hash = href; } },
+        el("td", {}, el("a", { class: "callname", href }, c.external_id || short(c.id)), el("span", { class: "sub" }, c.source)),
+        el("td", {}, statusTag(c.status)),
+        el("td", { class: "hide-sm" }, c.duration_s == null ? "–" : fmtTime(c.duration_s)),
+        el("td", {}, insights),
+        el("td", { class: "hide-sm meta" }, fmtDate(c.created_at)));
+    }));
     if (calls.some(c => c.status === "queued" || c.status === "processing")) pollTimer = setTimeout(loadCalls, 4000);
   }
   loadCalls();
 }
 
-// ---------------------------------------------------------------- detail view
+// ---------------------------------------------------------------- one call
+const GROUPS = [["Needs attention", ["high"]], ["Watch", ["medium"]], ["Notes", ["low", "info"]]];
+
 async function showCall(id) {
   clearTimeout(pollTimer);
+  setNav("calls");
   let call;
   try { call = await api(`/v1/calls/${encodeURIComponent(id)}`); }
-  catch (e) { if (handle(e)) return; app.replaceChildren(el("p", { class: "error" }, e.message), el("a", { href: "#/" }, "Back to calls")); return; }
+  catch (e) {
+    if (handle(e)) return;
+    app.replaceChildren(el("a", { href: "#/" }, "← All calls"), el("p", { class: "error" }, e.message));
+    return;
+  }
 
   const delMsg = el("span", { class: "msg error" });
-  const delBtn = el("button", { class: "danger", type: "button", onclick: async () => {
+  const delBtn = el("button", { class: "btn danger", type: "button", onclick: async () => {
       if (!confirm("Delete this call, its transcript, insights and recording? This cannot be undone.")) return;
       delBtn.disabled = true;
       try { await api(`/v1/calls/${encodeURIComponent(call.id)}`, { method: "DELETE" }); location.hash = "#/"; }
       catch (e) { if (!handle(e)) { delMsg.textContent = e.message; delBtn.disabled = false; } }
     } }, "Delete call");
   const head = el("div", {},
-    el("a", { href: "#/" }, "← Calls"),
-    el("h2", {}, call.call_id || call.id, " ", badge(call.status, `st-${call.status}`), delBtn, delMsg),
-    el("div", { class: "meta" }, `${call.source} · ${call.duration_s == null ? "length unknown" : fmtTime(call.duration_s)} · added ${new Date(call.created_at).toLocaleString()}`));
+    el("a", { href: "#/" }, "← All calls"),
+    el("div", { class: "page-head", style: "margin-top: 8px" },
+      el("h1", {}, call.call_id || short(call.id)), statusTag(call.status), el("span", { class: "spacer" }), delMsg, delBtn),
+    el("p", { class: "meta", style: "margin: -8px 0 16px" },
+      `${call.source} · ${call.duration_s == null ? "length unknown" : fmtTime(call.duration_s)} · added ${fmtDate(call.created_at)}`));
 
   if (call.status !== "done") {
     const why = call.status === "failed" ? el("p", { class: "error" }, call.error || "Processing failed.")
-      : el("p", {}, "Waiting for the worker to transcribe and analyze this call. This page refreshes by itself.");
+      : el("p", {}, "Transcribing and analyzing in the background. This page refreshes by itself.");
     app.replaceChildren(head, el("div", { class: "panel" }, why));
     if (call.status !== "failed") pollTimer = setTimeout(() => showCall(id), 4000);
     return;
   }
 
+  const speakers = call.speakers || [];
+  const spk = name => Math.max(0, speakers.indexOf(name)) % 2;
+  const spkVar = name => (spk(name) === 0 ? "var(--spk-a)" : "var(--spk-b)");
   // A signed, expiring link: <audio> cannot send the Authorization header.
-  const audio = call.recording_link ? el("audio", { controls: "", preload: "metadata", src: call.recording_link }) : null;
+  const audio = call.recording_link ? el("audio", { controls: true, preload: "metadata", src: call.recording_link }) : null;
 
-  const segRows = new Map();
+  const rows = new Map();
   const transcript = el("div", { class: "transcript", tabindex: "0", "aria-label": "Transcript" },
     ...call.segments.map(s => {
       const row = el("div", { class: "seg", id: `seg-${s.id}` },
-        el("button", { class: "ts", type: "button", title: "Play from here", onclick: () => jump(s.id, s.start_s) }, fmtTime(s.start_s)),
-        el("div", {}, el("span", { class: "speaker" }, `${s.speaker}:`), s.text));
-      segRows.set(s.id, row);
+        el("button", { class: "ts", type: "button", title: audio ? "Play from here" : "Highlight", onclick: () => jump(s.id, s.start_s) }, fmtTime(s.start_s)),
+        el("div", {}, el("span", { class: `speaker spk-${spk(s.speaker)}` }, `${s.speaker}:`), s.text));
+      rows.set(s.id, row);
       return row;
     }));
 
   function jump(segId, start) {
-    segRows.forEach(r => r.classList.remove("hit"));
-    const row = segRows.get(segId);
+    rows.forEach(r => r.classList.remove("hit"));
+    const row = rows.get(segId);
     if (row) { row.classList.add("hit"); row.scrollIntoView({ block: "center", behavior: "smooth" }); }
-    if (audio && audio.isConnected) { audio.currentTime = start; audio.play().catch(() => {}); }
+    if (audio) { audio.currentTime = start; audio.play().catch(() => {}); }
   }
 
-  const talk = Object.entries(call.talk_share || {}).map(([who, share]) => `${who} ${Math.round(share * 100)}%`).join(" · ");
-  const insights = call.insights.length ? call.insights.map(i => el("div", { class: "insight" },
-      el("div", {}, badge(i.severity, `s-${i.severity}`), " ", el("span", { class: "title" }, i.title)),
-      i.detail ? el("div", { class: "why" }, i.detail) : "",
-      ...i.evidence.map(e => el("button", { class: "ev", type: "button", onclick: () => jump(e.segment_id, e.start_s),
-          "aria-label": `Jump to ${fmtTime(e.start_s)}, ${e.speaker}` },
-        el("span", { class: "ts" }, fmtTime(e.start_s)), " ", el("span", { class: "speaker" }, `${e.speaker}:`), `“${e.quote}”`))))
-    : [el("p", { class: "empty" }, "No insights for this call.")];
+  const share = Object.entries(call.talk_share || {});
+  const talk = share.length ? el("div", {},
+    el("div", { class: "talk", role: "img", "aria-label": share.map(([w, v]) => `${w} ${Math.round(v * 100)}%`).join(", ") },
+      ...share.map(([who, v]) => el("span", { style: `width:${(v * 100).toFixed(1)}%; background:${spkVar(who)}` }))),
+    el("div", { class: "legend" }, ...share.map(([who, v]) =>
+      el("span", {}, el("i", { style: `background:${spkVar(who)}` }), `${who} ${Math.round(v * 100)}%`)))) : null;
+
+  const insightCard = i => el("div", { class: `insight s-${i.severity}` },
+    el("div", { class: "title" }, i.title),
+    i.detail ? el("div", { class: "why" }, i.detail) : null,
+    ...i.evidence.map(e => el("button", { class: "ev", type: "button", onclick: () => jump(e.segment_id, e.start_s),
+        "aria-label": `Jump to ${fmtTime(e.start_s)}, ${e.speaker}` },
+      el("span", { class: "ts" }, fmtTime(e.start_s)), " ", el("span", { class: `speaker spk-${spk(e.speaker)}` }, `${e.speaker}:`), `“${e.quote}”`)));
+  const groups = GROUPS.map(([title, sevs]) => {
+    const items = call.insights.filter(i => sevs.includes(i.severity));
+    return items.length ? el("section", { class: "group", "aria-label": title },
+      el("h2", { class: "group-title" }, title, chip(sevs[0], String(items.length))), ...items.map(insightCard)) : null;
+  });
 
   app.replaceChildren(head,
     el("div", { class: "detail" },
-      el("section", { class: "panel", "aria-label": "Insights" },
-        el("p", {}, call.summary), el("p", { class: "meta" }, `Talk share: ${talk || "–"}`), ...insights),
-      el("section", { class: "panel" }, audio || "", transcript)));
+      el("div", {},
+        el("section", { class: "panel summary", "aria-label": "Summary" },
+          el("h2", {}, "Summary"), el("p", {}, call.summary),
+          talk ? el("h2", { style: "margin-top: 4px" }, "Talk share") : null, talk),
+        call.insights.length ? el("div", {}, ...groups) : el("p", { class: "empty" }, "No insights for this call.")),
+      el("section", { class: "panel", "aria-label": "Recording and transcript" },
+        audio ? el("div", { class: "player" }, audio) : null, transcript)));
+}
+
+// ---------------------------------------------------------------- audit
+async function showAudit() {
+  clearTimeout(pollTimer);
+  setNav("audit");
+  let rows;
+  try { rows = await api("/v1/audit?limit=200"); }
+  catch (e) { if (!handle(e)) app.replaceChildren(el("p", { class: "error" }, e.message)); return; }
+  const target = r => {
+    if (!r.target) return el("span", { class: "meta" }, "–");
+    if (!(r.action.startsWith("call.") || r.action.startsWith("recording."))) return r.target;
+    return r.action === "call.delete" ? el("span", { class: "meta" }, `${short(r.target)} (deleted)`)
+      : el("a", { href: `#/calls/${r.target}` }, short(r.target));
+  };
+  app.replaceChildren(
+    el("div", { class: "page-head" }, el("h1", {}, "Audit log"), el("span", { class: "count" }, "who created, read, played or deleted what")),
+    el("section", { class: "panel" }, rows.length ? el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "When"), el("th", {}, "Who"), el("th", {}, "Action"), el("th", {}, "Call / target"))),
+      el("tbody", {}, ...rows.map(r => el("tr", {},
+        el("td", { class: "meta" }, fmtDate(r.at)), el("td", {}, r.actor), el("td", {}, el("code", {}, r.action)), el("td", {}, target(r))))))
+      : el("p", { class: "empty" }, "Nothing recorded yet.")));
+}
+
+// ---------------------------------------------------------------- settings
+async function showSettings() {
+  clearTimeout(pollTimer);
+  setNav("settings");
+  let settings;
+  try { settings = await api("/v1/settings"); }
+  catch (e) { if (!handle(e)) app.replaceChildren(el("p", { class: "error" }, e.message)); return; }
+  const box = el("textarea", { id: "competitors", style: "min-height: 140px", placeholder: "Gong\nChorus\nAcmeCall" });
+  box.value = settings.competitors.join("\n");
+  const msg = el("div", { class: "msg", role: "status" });
+  const save = el("button", { class: "btn primary", type: "submit" }, "Save");
+  app.replaceChildren(
+    el("div", { class: "page-head" }, el("h1", {}, "Settings")),
+    el("form", { class: "panel narrow", onsubmit: async e => {
+        e.preventDefault(); save.disabled = true; msg.className = "msg"; msg.textContent = "Saving…";
+        try {
+          const competitors = box.value.split("\n").map(s => s.trim()).filter(Boolean);
+          const saved = await api("/v1/settings", { method: "PUT", headers: { "content-type": "application/json" },
+            body: JSON.stringify({ competitors }) });
+          box.value = saved.competitors.join("\n");
+          msg.textContent = `Saved ${saved.competitors.length} competitor name(s). They apply to calls analyzed from now on.`;
+        } catch (e) { if (!handle(e)) { msg.className = "msg error"; msg.textContent = e.message; } }
+        finally { save.disabled = false; }
+      } },
+      el("h2", {}, "Competitors"),
+      el("p", { class: "help" }, "One name per line. Calls that mention them are flagged, including spellings like “Acme call” for AcmeCall."),
+      el("label", { for: "competitors" }, "Competitor names"), box,
+      el("div", { style: "margin-top: 12px" }, save), msg));
 }
 
 // ---------------------------------------------------------------- router
@@ -320,10 +504,11 @@ function route() {
   const m = location.hash.match(/^#\/calls\/([^/]+)$/);
   if (m) showCall(decodeURIComponent(m[1]));
   else if (location.hash === "#/audit") showAudit();
-  else showList();
+  else if (location.hash === "#/settings") showSettings();
+  else showCalls();
 }
-document.getElementById("signout").addEventListener("click", () => { setKey(""); showKeyForm(); });
 window.addEventListener("hashchange", route);
+document.getElementById("signout").addEventListener("click", () => { setKey(""); showKeyForm(); });
 api("/health").then(h => { document.getElementById("version").textContent = `v${h.version}`; }).catch(() => {});
 route();
 </script>

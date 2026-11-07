@@ -113,6 +113,7 @@ def test_baseline_scores_are_stable():
     s = evaluate(load_dir(EVALS), Settings())
     assert (s["pricing_objection"].tp, s["pricing_objection"].fp, s["pricing_objection"].fn) == (2, 1, 3)
     assert (s["competitor_mention"].tp, s["competitor_mention"].fp, s["competitor_mention"].fn) == (3, 0, 0)
+    assert (s["timing_objection"].tp, s["timing_objection"].fp, s["timing_objection"].fn) == (1, 0, 3)
     assert (s["no_next_step"].tp, s["no_next_step"].fp, s["no_next_step"].fn) == (3, 4, 1)
 
 
