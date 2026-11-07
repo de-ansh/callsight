@@ -1,0 +1,8 @@
+# Timing objection with soft wording; meeting rescheduled.
+# no_next_step: false
+[00:00] Ivy: Hi Paul, thanks for joining. Are you still planning to roll this out in January?
+[00:06] Paul: About that. We just had a reorg, so this got pushed. Let's circle back after our planning cycle in March. {timing_objection}
+[00:17] Ivy: Understood. Would it help to keep a short check-in on the calendar for early March?
+[00:24] Paul: Yes, let's pencil in March 3rd.
+[00:28] Ivy: Done. I'll send a placeholder invite for March 3rd. {action_item}
+[00:33] Paul: Thanks, Ivy.

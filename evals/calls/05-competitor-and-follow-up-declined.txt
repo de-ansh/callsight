@@ -1,0 +1,10 @@
+# Competitor named; rep offers a follow-up and the prospect declines.
+# competitors: Gong, Chorus
+# no_next_step: true
+[00:00] Alex: Thanks for joining, Tom. How has call review been going for your team?
+[00:07] Tom: We use Gong today. It works, it's just a lot of money for what we use. {competitor_mention} {pricing_objection}
+[00:16] Alex: Got it. What parts do you actually use?
+[00:20] Tom: Mostly the recordings and a few dashboards. We looked at Chorus too but didn't like it. {competitor_mention}
+[00:31] Alex: We could cover recordings and dashboards for a fraction of that. Can I schedule a follow-up demo next week?
+[00:39] Tom: No, I don't think so. We're locked in until our renewal. We'll reach out if that changes. {timing_objection}
+[00:48] Alex: Understood, thanks for your time Tom.

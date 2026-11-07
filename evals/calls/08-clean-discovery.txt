@@ -1,0 +1,11 @@
+# A good discovery call: no objections, balanced talk, next step agreed with keywords.
+# no_next_step: false
+[00:00] Maya: Thanks for joining, Ben. What made you look at call analysis now?
+[00:06] Ben: We hired six new reps this quarter and I can't listen to all their calls. I want to know where they struggle.
+[00:16] Maya: How do you review calls today?
+[00:19] Ben: Randomly. I pick two calls a week per rep and take notes in a spreadsheet. It takes most of my Friday.
+[00:30] Maya: What would a good outcome look like for you in three months?
+[00:35] Ben: Every rep gets feedback on every call, and I spend my Fridays on the two or three that really need me.
+[00:45] Maya: That's exactly the use case. Should we book a demo on Tuesday with your sales ops lead?
+[00:52] Ben: Yes, let's do Tuesday. I'll bring Carla from sales ops.
+[00:57] Maya: Great, I'll send the calendar invite now. {action_item}

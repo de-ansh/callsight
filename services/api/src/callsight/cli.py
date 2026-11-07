@@ -44,7 +44,26 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--rep", action="append", default=[], help="speaker name of the sales rep (repeatable)")
     p.add_argument("--llm", choices=["none", "ollama"], help="override CALLSIGHT_LLM_PROVIDER")
     p.add_argument("--json", action="store_true", help="print the report as JSON")
+
+    e = sub.add_parser("eval", help="score analyzers against labelled transcripts (see evals/calls)")
+    e.add_argument("directory")
+    e.add_argument("--analyzers", help="comma-separated analyzer names (default: CALLSIGHT_ANALYZERS or built-ins)")
+    e.add_argument("--llm", choices=["none", "ollama"], help="override CALLSIGHT_LLM_PROVIDER")
+    e.add_argument("-v", "--verbose", action="store_true", help="list every false positive / negative")
     args = parser.parse_args(argv)
+
+    if args.command == "eval":
+        from pathlib import Path
+
+        from .evals import evaluate, format_scores, load_dir
+
+        settings = Settings.from_env()
+        if args.llm:
+            settings = dataclasses.replace(settings, llm_provider=args.llm)
+        if args.analyzers:
+            settings = dataclasses.replace(settings, analyzers=tuple(a.strip() for a in args.analyzers.split(",")))
+        print(format_scores(evaluate(load_dir(Path(args.directory)), settings), verbose=args.verbose))
+        return 0
 
     settings = Settings.from_env()
     overrides: dict[str, object] = {}

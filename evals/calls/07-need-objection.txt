@@ -1,0 +1,7 @@
+# Need objection (does not see the value) plus a rep monologue.
+# no_next_step: true
+[00:00] Chris: Thanks for joining, Ava. So let me tell you about everything we do. We record every call, transcribe it automatically, score it against your playbook, flag risky deals, forecast revenue, coach reps with AI, and integrate with every CRM on the market. Teams love it and ramp time drops by half within a quarter.
+[00:40] Ava: Okay. I'm not sure we need this. We only have three reps and I listen to their calls myself. {need_objection}
+[00:50] Chris: Sure, but imagine having all of that automated. You'd get dashboards, alerts, a mobile app, and weekly summaries sent to your inbox. Most managers say it saves them hours every week, and the reps get better faster because the feedback is instant.
+[01:15] Ava: Maybe later. For now it feels like overkill for a team our size. {need_objection}
+[01:23] Chris: Totally understand. Thanks for your time.

@@ -24,8 +24,11 @@ class OllamaLLM:
         self.model = model
         self.timeout = timeout
 
-    def complete(self, prompt: str) -> str:
-        body = json.dumps({"model": self.model, "prompt": prompt, "stream": False}).encode()
+    def complete(self, prompt: str, *, json_mode: bool = False) -> str:
+        payload = {"model": self.model, "prompt": prompt, "stream": False, "options": {"temperature": 0}}
+        if json_mode:
+            payload["format"] = "json"  # Ollama constrains decoding to valid JSON
+        body = json.dumps(payload).encode()
         request = urllib.request.Request(
             f"{self.base_url}/api/generate",
             data=body,

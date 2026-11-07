@@ -1,0 +1,10 @@
+# Several real rep commitments, a figure of speech, and a prospect commitment (not a rep action item).
+# no_next_step: false
+[00:00] Nina: Thanks for the questions last week, Omar. I'll be honest, the SSO setup is the trickiest part.
+[00:10] Omar: That's fine, our IT team has done SAML before.
+[00:16] Nina: Good. I'll send you the SAML metadata today, and I will set up a sandbox for your admins by Wednesday. {action_item}
+[00:27] Omar: Great. I'll loop in our security lead so she can review the data processing terms.
+[00:35] Nina: Perfect. I'll also share our SOC 2 report under NDA. {action_item}
+[00:42] Omar: Sounds good.
+[00:45] Nina: Let's meet again Friday at 2 to go through the sandbox together.
+[00:51] Omar: Friday at 2 works.
