@@ -4,6 +4,8 @@ import io
 import json
 import os
 import socket
+import uuid
+from contextlib import nullcontext
 
 import pytest
 
@@ -17,8 +19,9 @@ from callsight import worker  # noqa: E402
 from callsight.api import app  # noqa: E402
 from callsight.config import Settings  # noqa: E402
 
-client = TestClient(app)
+anon = TestClient(app)
 SECRET = "test-secret"
+FAKE_ORG = uuid.uuid4()
 TRANSCRIPT = "[00:00] Alex: Hi\n[00:05] Priya: Honestly the price is too expensive.\n"
 
 
@@ -28,9 +31,9 @@ def signed(payload, secret=SECRET):
     return body, {"x-callsight-signature": sig, "content-type": "application/json"}
 
 
-def post(payload, secret=SECRET, name="generic"):
+def post(payload, secret=SECRET, name="generic", org_id=FAKE_ORG, client=anon):
     body, headers = signed(payload, secret)
-    return client.post(f"/v1/connectors/{name}/webhook", content=body, headers=headers)
+    return client.post(f"/v1/orgs/{org_id}/connectors/{name}/webhook", content=body, headers=headers)
 
 
 # --- pure helpers -------------------------------------------------------------------------
@@ -74,13 +77,18 @@ def test_hostnames_resolving_to_private_addresses_are_rejected(monkeypatch):
 
 @pytest.fixture
 def webhook_env(monkeypatch):
+    """Pretend FAKE_ORG exists with SECRET; validation fails before anything is stored."""
+    from callsight import store
+
     monkeypatch.setenv("CALLSIGHT_DATABASE_URL", "postgresql://unused@127.0.0.1:1/x")
-    monkeypatch.setenv("CALLSIGHT_WEBHOOK_SECRET", SECRET)
+    monkeypatch.setattr(store, "connect", lambda url: nullcontext(None))
+    monkeypatch.setattr(store, "org_webhook_secret", lambda conn, org_id: SECRET if org_id == FAKE_ORG else None)
 
 
 def test_webhook_rejects_bad_signature(webhook_env):
     assert post({"transcript": TRANSCRIPT}, secret="wrong").status_code == 401
-    assert client.post("/v1/connectors/generic/webhook", json={"transcript": TRANSCRIPT}).status_code == 401
+    url = f"/v1/orgs/{FAKE_ORG}/connectors/generic/webhook"
+    assert anon.post(url, json={"transcript": TRANSCRIPT}).status_code == 401
 
 
 def test_webhook_validates_payload(webhook_env):
@@ -90,14 +98,21 @@ def test_webhook_validates_payload(webhook_env):
     assert post({"transcript": 5}).status_code == 422
 
 
-def test_webhook_unknown_connector_and_disabled(webhook_env, monkeypatch):
+def test_webhook_unknown_connector_or_org(webhook_env):
     assert post({"transcript": TRANSCRIPT}, name="nope").status_code == 404
-    monkeypatch.delenv("CALLSIGHT_WEBHOOK_SECRET")
-    assert post({"transcript": TRANSCRIPT}).status_code == 503
+    assert post({"transcript": TRANSCRIPT}, org_id=uuid.uuid4()).status_code == 404
+
+
+def test_one_orgs_secret_does_not_work_for_another(webhook_env, monkeypatch):
+    from callsight import store
+
+    other = uuid.uuid4()
+    monkeypatch.setattr(store, "org_webhook_secret", lambda conn, org_id: {FAKE_ORG: SECRET, other: "other"}[org_id])
+    assert post({"transcript": TRANSCRIPT}, org_id=other).status_code == 401
 
 
 def test_ui_is_served():
-    res = client.get("/")
+    res = anon.get("/")
     assert res.status_code == 200 and "<title>Callsight</title>" in res.text
     assert "innerHTML" not in res.text  # call data must only be rendered as text
 
@@ -110,12 +125,10 @@ needs_backends = pytest.mark.skipif(not (DB_URL and S3), reason="needs test Post
 
 
 @pytest.fixture
-def backends(monkeypatch):
-    monkeypatch.setenv("CALLSIGHT_DATABASE_URL", DB_URL)
+def backends(monkeypatch, client):
     monkeypatch.setenv("CALLSIGHT_S3_ENDPOINT", S3)
     monkeypatch.setenv("CALLSIGHT_S3_ACCESS_KEY", os.environ["CALLSIGHT_TEST_S3_ACCESS_KEY"])
     monkeypatch.setenv("CALLSIGHT_S3_SECRET_KEY", os.environ["CALLSIGHT_TEST_S3_SECRET_KEY"])
-    monkeypatch.setenv("CALLSIGHT_WEBHOOK_SECRET", SECRET)
     return Settings.from_env()
 
 
@@ -128,8 +141,8 @@ class FakeASR:
 
 
 @needs_backends
-def test_webhook_transcript_is_analyzed_and_stored(backends):
-    res = post({"call_id": "hook-text", "transcript": TRANSCRIPT})
+def test_webhook_transcript_is_analyzed_and_stored(backends, client, org):
+    res = post({"call_id": "hook-text", "transcript": TRANSCRIPT}, secret=org["webhook_secret"], org_id=org["id"])
     assert res.status_code == 200 and res.json()["status"] == "done"
     call = client.get(f"/v1/calls/{res.json()['id']}").json()
     assert call["source"] == "generic" and call["has_recording"] is False
@@ -137,7 +150,7 @@ def test_webhook_transcript_is_analyzed_and_stored(backends):
 
 
 @needs_backends
-def test_webhook_recording_url_is_fetched_by_worker_and_playable(backends, monkeypatch):
+def test_webhook_recording_url_is_fetched_by_worker_and_playable(backends, monkeypatch, client, org):
     while worker.process_one(backends, FakeASR()):  # drain leftovers from other tests
         pass
 
@@ -147,7 +160,8 @@ def test_webhook_recording_url_is_fetched_by_worker_and_playable(backends, monke
 
     monkeypatch.setattr(remote, "check_url", lambda url: None)  # example.com is not actually resolvable here
     monkeypatch.setattr(remote, "fetch", fake_fetch)
-    res = post({"call_id": "hook-audio", "recording_url": "https://recordings.example.com/calls/42.mp3"})
+    res = post({"call_id": "hook-audio", "recording_url": "https://recordings.example.com/calls/42.mp3"},
+               secret=org["webhook_secret"], org_id=org["id"])
     assert res.status_code == 200 and res.json()["status"] == "queued"
     assert worker.process_one(backends, FakeASR())
 
@@ -159,9 +173,18 @@ def test_webhook_recording_url_is_fetched_by_worker_and_playable(backends, monke
     part = client.get(f"/v1/calls/{call_id}/recording", headers={"range": "bytes=7-"})
     assert part.status_code == 206 and part.content == b"audio" and part.headers["content-range"] == "bytes 7-11/12"
     assert client.get(f"/v1/calls/{call_id}/recording", headers={"range": "bytes=50-"}).status_code == 416
+    # The signed link from the detail response plays without an API key; a tampered one does not.
+    link = call["recording_link"]
+    assert anon.get(link).content == b"remote-audio"
+    assert anon.get(link.replace("sig=", "sig=0")).status_code == 401
+    assert anon.get(f"/v1/calls/{call_id}/recording").status_code == 401
+    assert anon.get(link.replace("by=key%3Apytest", "by=key%3Amallory")).status_code == 401  # forged listener
+    reads = [r["actor"] for r in client.get("/v1/audit").json()
+             if r["action"] == "recording.read" and r["target"] == str(call_id)]
+    assert "key:pytest (link)" in reads
 
 
 @needs_backends
-def test_uploaded_recording_is_playable(backends):
+def test_uploaded_recording_is_playable(backends, client):
     res = client.post("/v1/calls/upload", files={"file": ("c.wav", io.BytesIO(b"RIFFdata"))})
     assert client.get(f"/v1/calls/{res.json()['id']}/recording").content == b"RIFFdata"

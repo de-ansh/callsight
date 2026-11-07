@@ -28,6 +28,7 @@ def test_analyze_rejects_unparseable_transcript():
     assert client.post("/v1/analyze", json={"transcript": "no timestamps here"}).status_code == 422
 
 
-def test_read_endpoints_need_a_database(monkeypatch):
+def test_read_endpoints_need_a_key_and_a_database(monkeypatch):
     monkeypatch.delenv("CALLSIGHT_DATABASE_URL", raising=False)
-    assert client.get("/v1/calls").status_code == 503
+    assert client.get("/v1/calls").status_code == 401
+    assert client.get("/v1/calls", headers={"authorization": "Bearer cs_x"}).status_code == 503

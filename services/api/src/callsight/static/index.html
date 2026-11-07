@@ -69,7 +69,9 @@
 </style>
 </head>
 <body>
-<header><a href="#/">Callsight</a><span class="meta" id="version"></span></header>
+<header><a href="#/">Callsight</a><span class="meta" id="version"></span>
+  <span style="flex:1"></span><a href="#/audit" class="meta">Audit log</a>
+  <button type="button" class="meta" id="signout" style="border:0;background:none;color:var(--muted)">Change API key</button></header>
 <main id="app" aria-live="polite"></main>
 
 <script>
@@ -96,14 +98,58 @@ function fmtTime(s) {
   return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
 }
 
+// The API key lives in this browser only (a per-viewer convenience); storage can be unavailable.
+const KEY_STORE = "callsight.apiKey";
+function getKey() { try { return localStorage.getItem(KEY_STORE) || ""; } catch { return sessionKey; } }
+function setKey(k) { sessionKey = k; try { k ? localStorage.setItem(KEY_STORE, k) : localStorage.removeItem(KEY_STORE); } catch {} }
+let sessionKey = "";
+
+class AuthError extends Error {}
+
 async function api(path, options = {}) {
-  const res = await fetch(path, options);
+  const headers = { ...(options.headers || {}) };
+  if (getKey()) headers.authorization = `Bearer ${getKey()}`;
+  const res = await fetch(path, { ...options, headers });
+  if (res.status === 401) throw new AuthError("Your API key is missing or no longer valid.");
   const body = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
   if (!res.ok) throw new Error(body?.detail ? (typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail)) : `HTTP ${res.status}`);
   return body;
 }
 
 function badge(text, cls) { return el("span", { class: `badge ${cls}` }, text); }
+
+// ---------------------------------------------------------------- API key
+function showKeyForm(reason) {
+  clearTimeout(pollTimer);
+  const input = el("input", { type: "text", id: "apikey", autocomplete: "off", spellcheck: "false", placeholder: "cs_…" });
+  app.replaceChildren(el("form", { class: "panel", style: "max-width:520px", onsubmit: e => {
+      e.preventDefault(); setKey(input.value.trim()); route(); } },
+    el("strong", {}, "Enter your API key"),
+    reason ? el("p", { class: "error" }, reason) : "",
+    el("p", { class: "meta" }, "Ask your administrator, or create one with: python -m callsight.admin create-key --org <name> --name <you>"),
+    el("label", { for: "apikey" }, "API key"), input,
+    el("button", { class: "primary", type: "submit" }, "Continue")));
+  input.focus();
+}
+
+function handle(e) {
+  if (e instanceof AuthError) { showKeyForm(e.message); return true; }
+  return false;
+}
+
+// ---------------------------------------------------------------- audit view
+async function showAudit() {
+  clearTimeout(pollTimer);
+  let rows;
+  try { rows = await api("/v1/audit?limit=200"); }
+  catch (e) { if (!handle(e)) app.replaceChildren(el("p", { class: "error" }, e.message)); return; }
+  app.replaceChildren(el("a", { href: "#/" }, "← Calls"), el("h2", {}, "Audit log"),
+    el("div", { class: "panel" }, el("table", {},
+      el("thead", {}, el("tr", {}, el("th", {}, "When"), el("th", {}, "Who"), el("th", {}, "Action"), el("th", {}, "Target"))),
+      el("tbody", {}, ...rows.map(r => el("tr", {},
+        el("td", { class: "meta" }, new Date(r.at).toLocaleString()), el("td", {}, r.actor), el("td", {}, r.action),
+        el("td", {}, r.target && r.action.startsWith("call") ? el("a", { href: `#/calls/${r.target}` }, r.target.slice(0, 8)) : (r.target || ""))))))));
+}
 
 // ---------------------------------------------------------------- list view
 async function showList() {
@@ -117,7 +163,7 @@ async function showList() {
   async function submit(button, msg, run) {
     button.disabled = true; msg.className = "msg"; msg.textContent = "Working…";
     try { msg.textContent = await run(); loadCalls(); }
-    catch (e) { msg.className = "msg error"; msg.textContent = e.message; }
+    catch (e) { if (!handle(e)) { msg.className = "msg error"; msg.textContent = e.message; } }
     finally { button.disabled = false; }
   }
   const uploadBtn = el("button", { class: "primary", type: "submit" }, "Upload recording");
@@ -164,7 +210,7 @@ async function showList() {
     clearTimeout(pollTimer);
     let calls;
     try { calls = await api("/v1/calls?limit=200"); }
-    catch (e) { tbody.replaceChildren(el("tr", {}, el("td", { colspan: 6, class: "error" }, e.message))); return; }
+    catch (e) { if (!handle(e)) tbody.replaceChildren(el("tr", {}, el("td", { colspan: 6, class: "error" }, e.message))); return; }
     if (!calls.length) {
       tbody.replaceChildren(el("tr", {}, el("td", { colspan: 6, class: "empty" }, "No calls yet. Upload a recording or paste a transcript.")));
       return;
@@ -186,7 +232,7 @@ async function showCall(id) {
   clearTimeout(pollTimer);
   let call;
   try { call = await api(`/v1/calls/${encodeURIComponent(id)}`); }
-  catch (e) { app.replaceChildren(el("p", { class: "error" }, e.message), el("a", { href: "#/" }, "Back to calls")); return; }
+  catch (e) { if (handle(e)) return; app.replaceChildren(el("p", { class: "error" }, e.message), el("a", { href: "#/" }, "Back to calls")); return; }
 
   const head = el("div", {},
     el("a", { href: "#/" }, "← Calls"),
@@ -201,8 +247,8 @@ async function showCall(id) {
     return;
   }
 
-  const audio = call.has_recording
-    ? el("audio", { controls: "", preload: "metadata", src: `/v1/calls/${call.id}/recording` }) : null;
+  // A signed, expiring link: <audio> cannot send the Authorization header.
+  const audio = call.recording_link ? el("audio", { controls: "", preload: "metadata", src: call.recording_link }) : null;
 
   const segRows = new Map();
   const transcript = el("div", { class: "transcript", tabindex: "0", "aria-label": "Transcript" },
@@ -239,9 +285,13 @@ async function showCall(id) {
 
 // ---------------------------------------------------------------- router
 function route() {
+  if (!getKey()) { showKeyForm(); return; }
   const m = location.hash.match(/^#\/calls\/([^/]+)$/);
-  if (m) showCall(decodeURIComponent(m[1])); else showList();
+  if (m) showCall(decodeURIComponent(m[1]));
+  else if (location.hash === "#/audit") showAudit();
+  else showList();
 }
+document.getElementById("signout").addEventListener("click", () => { setKey(""); showKeyForm(); });
 window.addEventListener("hashchange", route);
 api("/health").then(h => { document.getElementById("version").textContent = `v${h.version}`; }).catch(() => {});
 route();
