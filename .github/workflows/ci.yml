@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+jobs:
+  test:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    defaults:
+      run:
+        shell: bash
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12" # matches services/api/Dockerfile
+          cache: pip
+          cache-dependency-path: services/api/pyproject.toml
+
+      - name: Install
+        working-directory: services/api
+        run: pip install -e ".[dev]"
+
+      - name: Start Postgres and MinIO
+        run: scripts/test-services.sh up
+
+      - name: Test
+        working-directory: services/api
+        run: |
+          set -euo pipefail
+          eval "$(../../scripts/test-services.sh env)"
+          python -m pytest -rs -p no:cacheprovider | tee pytest.log
+          # Integration tests skip quietly without their backends; in CI a skip means broken setup.
+          if grep -q "SKIPPED" pytest.log; then echo "::error::tests were skipped"; exit 1; fi
+
+      - name: Stop services
+        if: always()
+        run: scripts/test-services.sh down
+
+  docker-build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build API/worker image
+        run: docker build --tag callsight:ci services/api

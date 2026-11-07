@@ -44,8 +44,13 @@ Run the tests:
 
 ```bash
 cd services/api
-pip install pytest            # add httpx fastapi to also run the API tests
+pip install -e ".[dev]"
+python -m pytest              # unit tests; Postgres/MinIO tests are skipped
+
+# Full suite, as CI runs it (needs Docker):
+../../scripts/test-services.sh up && eval "$(../../scripts/test-services.sh env)"
 python -m pytest
+../../scripts/test-services.sh down
 ```
 
 ## Run the stack
