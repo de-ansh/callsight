@@ -16,7 +16,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request,
 from fastapi.responses import FileResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
-from . import __version__, auth, recordings, remote, store
+from . import __version__, auth, recordings, remote, retention, store
 from .auth import Principal
 from .config import Settings
 from .connectors import Unauthorized
@@ -236,6 +236,13 @@ def get_call(call_id: UUID, principal: Principal = Depends(require_key)) -> dict
         else None
     )
     return call
+
+
+@app.delete("/v1/calls/{call_id}", status_code=204)
+def delete_call(call_id: UUID, principal: Principal = Depends(require_key)) -> None:
+    """Delete a call, its transcript, insights and recording. The audit log keeps a record that it happened."""
+    if not retention.delete_call(Settings.from_env(), principal.org_id, call_id, principal.actor):
+        raise HTTPException(status_code=404, detail="Call not found")
 
 
 @app.get("/v1/audit")

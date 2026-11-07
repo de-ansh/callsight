@@ -65,6 +65,8 @@
   .speaker { font-weight: 600; margin-right: 4px; }
   audio { width: 100%; margin-bottom: 10px; }
   .meta { color: var(--muted); font-size: 13px; }
+  .danger { margin-left: 12px; padding: 3px 10px; border: 1px solid var(--high); background: none;
+            color: var(--high); font-size: 13px; }
   .empty { color: var(--muted); padding: 20px 0; }
 </style>
 </head>
@@ -234,9 +236,16 @@ async function showCall(id) {
   try { call = await api(`/v1/calls/${encodeURIComponent(id)}`); }
   catch (e) { if (handle(e)) return; app.replaceChildren(el("p", { class: "error" }, e.message), el("a", { href: "#/" }, "Back to calls")); return; }
 
+  const delMsg = el("span", { class: "msg error" });
+  const delBtn = el("button", { class: "danger", type: "button", onclick: async () => {
+      if (!confirm("Delete this call, its transcript, insights and recording? This cannot be undone.")) return;
+      delBtn.disabled = true;
+      try { await api(`/v1/calls/${encodeURIComponent(call.id)}`, { method: "DELETE" }); location.hash = "#/"; }
+      catch (e) { if (!handle(e)) { delMsg.textContent = e.message; delBtn.disabled = false; } }
+    } }, "Delete call");
   const head = el("div", {},
     el("a", { href: "#/" }, "← Calls"),
-    el("h2", {}, call.call_id || call.id, " ", badge(call.status, `st-${call.status}`)),
+    el("h2", {}, call.call_id || call.id, " ", badge(call.status, `st-${call.status}`), delBtn, delMsg),
     el("div", { class: "meta" }, `${call.source} · ${call.duration_s == null ? "length unknown" : fmtTime(call.duration_s)} · added ${new Date(call.created_at).toLocaleString()}`));
 
   if (call.status !== "done") {

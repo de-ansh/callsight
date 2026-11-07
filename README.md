@@ -87,6 +87,10 @@ curl -s localhost:8000/v1/analyze -H "Authorization: Bearer $KEY" -H 'content-ty
 - **Recordings** are played through short-lived signed links (6 hours) because audio players
   cannot send an API key. Set `CALLSIGHT_SECRET_KEY` so links survive restarts and work across
   API replicas.
+- **Deleting data.** `DELETE /v1/calls/{id}` (or *Delete call* in the UI) removes the call, its
+  transcript, insights and recording from storage. `CALLSIGHT_RETENTION_DAYS=90` makes the worker
+  delete calls older than 90 days, checked hourly. The audit log keeps a record that a deletion
+  happened, but not the deleted content.
 - Without a database, `POST /v1/analyze` is a stateless open endpoint (nothing is stored).
 
 ### Sending calls from another system (webhook)

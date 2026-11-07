@@ -97,6 +97,30 @@ def list_audit(conn: psycopg.Connection, org_id: UUID, limit: int, offset: int) 
     ).fetchall()
 
 
+def call_storage(conn: psycopg.Connection, org_id: UUID, call_id: UUID) -> dict[str, Any] | None:
+    """The call's recording key ({'recording_key': None} without one); None if the call is not in this org."""
+    return conn.execute(
+        "SELECT recording_key FROM calls WHERE id = %s AND org_id = %s", (call_id, org_id)
+    ).fetchone()
+
+
+def delete_call(conn: psycopg.Connection, org_id: UUID, call_id: UUID) -> bool:
+    """Delete the call row; segments and insights go with it (ON DELETE CASCADE)."""
+    with conn.transaction():
+        return conn.execute(
+            "DELETE FROM calls WHERE id = %s AND org_id = %s", (call_id, org_id)
+        ).rowcount == 1
+
+
+def expired_calls(conn: psycopg.Connection, days: int, limit: int = 100) -> list[dict[str, Any]]:
+    """Calls older than `days`, across all orgs. Jobs being processed are left for the next round."""
+    return conn.execute(
+        "SELECT id, org_id FROM calls WHERE created_at < now() - make_interval(days => %s)"
+        " AND status <> 'processing' ORDER BY created_at LIMIT %s",
+        (days, limit),
+    ).fetchall()
+
+
 def org_webhook_secret(conn: psycopg.Connection, org_id: UUID) -> str | None:
     row = conn.execute("SELECT webhook_secret FROM orgs WHERE id = %s", (org_id,)).fetchone()
     return row["webhook_secret"] if row else None

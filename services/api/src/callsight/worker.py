@@ -12,7 +12,7 @@ import time
 from pathlib import PurePath
 from urllib.parse import urlsplit
 
-from . import recordings, remote, store
+from . import recordings, remote, retention, store
 from .config import Settings
 from .migrate import migrate
 from .registry import create, load_builtins
@@ -20,6 +20,7 @@ from .service import analyze_transcript
 
 log = logging.getLogger("callsight.worker")
 IDLE_SLEEP_S = 2.0
+PURGE_EVERY_S = 3600
 
 
 def process_one(settings: Settings, asr) -> bool:
@@ -73,7 +74,14 @@ def main() -> None:
     log.info("loading whisper model '%s'", settings.whisper_model)
     asr = create("asr", "whisper", model=settings.whisper_model)
     log.info("worker ready")
+    next_purge = 0.0
     while True:
+        if time.monotonic() >= next_purge:
+            try:
+                retention.purge_expired(settings)
+            except Exception:  # a storage hiccup must not stop transcription
+                log.exception("retention purge failed; retrying next round")
+            next_purge = time.monotonic() + PURGE_EVERY_S
         if not process_one(settings, asr):
             time.sleep(IDLE_SLEEP_S)
 
