@@ -14,7 +14,7 @@ from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
 from psycopg_pool import ConnectionPool
 
-from .models import CallReport, Transcript
+from .models import CallReport, Segment, Transcript
 
 POOL_MAX_SIZE = 10  # per process; FastAPI's threadpool waits for a free connection beyond this
 _pools: dict[str, ConnectionPool] = {}
@@ -187,6 +187,34 @@ def complete_job(conn: psycopg.Connection, call_id: UUID, transcript: Transcript
         _insert_results(conn, call_id, transcript, report)
 
 
+def load_transcript(conn: psycopg.Connection, org_id: UUID, call_id: UUID) -> tuple[Transcript, dict[str, Any]] | None:
+    """The stored transcript of a call in this org, plus its row (status, external_id, rep_speaker)."""
+    call = conn.execute(
+        "SELECT id, external_id, status, rep_speaker FROM calls WHERE id = %s AND org_id = %s", (call_id, org_id)
+    ).fetchone()
+    if call is None:
+        return None
+    rows = conn.execute(
+        "SELECT idx, start_s, speaker, text FROM segments WHERE call_id = %s ORDER BY idx", (call_id,)
+    ).fetchall()
+    segments = [Segment(r["idx"], r["start_s"], r["speaker"], r["text"]) for r in rows]
+    return Transcript(call["external_id"] or str(call_id), segments), call
+
+
+def replace_analysis(
+    conn: psycopg.Connection, call_id: UUID, transcript: Transcript, report: CallReport, rep_speaker: str | None
+) -> None:
+    """Store a fresh analysis (and possibly renamed speakers) for an existing call, atomically."""
+    with conn.transaction():
+        conn.execute(
+            "UPDATE calls SET summary = %s, talk_share = %s, duration_s = %s, rep_speaker = %s WHERE id = %s",
+            (report.summary, Jsonb(report.talk_share), report.duration_s, rep_speaker, call_id),
+        )
+        conn.execute("DELETE FROM segments WHERE call_id = %s", (call_id,))
+        conn.execute("DELETE FROM insights WHERE call_id = %s", (call_id,))
+        _insert_results(conn, call_id, transcript, report)
+
+
 def fail_job(conn: psycopg.Connection, call_id: UUID, error: str) -> None:
     with conn.transaction():
         conn.execute(
@@ -224,7 +252,7 @@ def list_calls(
 def get_call(conn: psycopg.Connection, org_id: UUID, call_id: UUID) -> dict[str, Any] | None:
     """The stored call in the same shape as CallReport.to_dict(), plus id, timestamps and segments."""
     call = conn.execute(
-        "SELECT id, external_id, source, status, error, duration_s, summary, talk_share, created_at,"
+        "SELECT id, external_id, source, status, error, duration_s, summary, talk_share, created_at, rep_speaker,"
         " recording_key IS NOT NULL AS has_recording"
         " FROM calls WHERE id = %s AND org_id = %s",
         (call_id, org_id),
@@ -245,6 +273,7 @@ def get_call(conn: psycopg.Connection, org_id: UUID, call_id: UUID) -> dict[str,
         "status": call["status"],
         "error": call["error"],
         "has_recording": call["has_recording"],
+        "rep_speaker": call["rep_speaker"],
         "created_at": call["created_at"],
         "duration_s": call["duration_s"],
         "speakers": list(dict.fromkeys(s["speaker"] for s in segments)),

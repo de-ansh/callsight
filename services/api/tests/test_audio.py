@@ -137,3 +137,13 @@ def test_storage_failure_is_a_clear_503(dummy_backends, monkeypatch):
         monkeypatch.setattr(recordings, "put", fail)
         res = upload("call.wav", b"RIFF")
         assert res.status_code == 503 and "storage is unavailable" in res.json()["detail"]
+
+
+@pytest.mark.skipif(not (DB_URL and S3), reason="needs CALLSIGHT_TEST_DATABASE_URL and CALLSIGHT_TEST_S3_ENDPOINT")
+def test_calls_still_processing_cannot_be_reanalyzed(monkeypatch, client):
+    monkeypatch.setenv("CALLSIGHT_S3_ENDPOINT", S3)
+    monkeypatch.setenv("CALLSIGHT_S3_ACCESS_KEY", os.environ["CALLSIGHT_TEST_S3_ACCESS_KEY"])
+    monkeypatch.setenv("CALLSIGHT_S3_SECRET_KEY", os.environ["CALLSIGHT_TEST_S3_SECRET_KEY"])
+    queued = upload("q.wav", b"RIFF", client=client).json()["id"]
+    assert client.post(f"/v1/calls/{queued}/reanalyze").status_code == 409
+    client.delete(f"/v1/calls/{queued}")

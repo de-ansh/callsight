@@ -187,3 +187,61 @@ def test_org_competitors_are_flagged_and_isolated(client, monkeypatch):
     assert other.get("/v1/settings").json() == {"competitors": []}
     assert any(r["action"] == "settings.update" for r in client.get("/v1/audit").json())
     client.put("/v1/settings", json={"competitors": []})
+
+
+# --- re-analysis and speakers -------------------------------------------------------------
+
+STEREO_LIKE = (
+    "[00:00] Speaker 1: Hi, thanks for joining.\n"
+    "[00:04] Speaker 2: Sure. We looked at Quuxcall and honestly the price is too high for our team right now, "
+    "we would need a much better deal before we change anything at all this year.\n"
+    "[00:20] Speaker 1: Understood.\n"
+)
+
+
+def test_reanalyze_applies_current_competitor_list(client):
+    call = client.post("/v1/analyze", json={"call_id": "reanalyze-me", "transcript": STEREO_LIKE}).json()
+    assert not any(i["kind"] == "competitor_mention" for i in call["insights"])
+    client.put("/v1/settings", json={"competitors": ["Quuxcall"]})
+    try:
+        updated = client.post(f"/v1/calls/{call['id']}/reanalyze").json()
+    finally:
+        client.put("/v1/settings", json={"competitors": []})
+    assert any(i["title"] == "Competitor mentioned: Quuxcall" for i in updated["insights"])
+    assert client.get(f"/v1/calls/{call['id']}").json()["insights"] == updated["insights"]
+    assert any(r["action"] == "call.reanalyze" and r["target"] == call["id"] for r in client.get("/v1/audit").json())
+
+
+def test_naming_speakers_and_choosing_the_rep(client):
+    call_id = client.post("/v1/analyze", json={"transcript": STEREO_LIKE}).json()["id"]
+    before = client.get(f"/v1/calls/{call_id}").json()
+    # First speaker is assumed to be the rep, so the long monologue by Speaker 2 is the "prospect".
+    assert not any(i["kind"] == "talk_ratio" for i in before["insights"])
+
+    res = client.put(f"/v1/calls/{call_id}/speakers",
+                     json={"names": {"Speaker 1": "Priya", "Speaker 2": "Alex"}, "rep": "Alex"})
+    assert res.status_code == 200
+    after = res.json()
+    assert after["speakers"] == ["Priya", "Alex"] and after["rep_speaker"] == "Alex"
+    assert {s["speaker"] for s in after["segments"]} == {"Priya", "Alex"}
+    assert any(i["kind"] == "talk_ratio" and "Alex" in i["detail"] for i in after["insights"])  # rep talked most
+    assert not any(i["kind"] == "pricing_objection" for i in after["insights"])  # the rep's words aren't objections
+
+    # Swapping names back works, and the rep choice follows the rename.
+    swapped = client.put(f"/v1/calls/{call_id}/speakers", json={"names": {"Priya": "Alex", "Alex": "Priya"}}).json()
+    assert swapped["speakers"] == ["Alex", "Priya"] and swapped["rep_speaker"] == "Priya"
+    # A plain re-analysis keeps the chosen rep.
+    assert client.post(f"/v1/calls/{call_id}/reanalyze").json()["rep_speaker"] == "Priya"
+
+
+def test_speaker_update_validation(client, monkeypatch):
+    call_id = client.post("/v1/analyze", json={"transcript": STEREO_LIKE}).json()["id"]
+    put = lambda body: client.put(f"/v1/calls/{call_id}/speakers", json=body).status_code
+    assert put({"names": {"Nobody": "X"}}) == 422                                   # not a speaker
+    assert put({"names": {"Speaker 1": "Speaker 2"}}) == 422                        # would merge two speakers
+    assert put({"names": {"Speaker 1": "   "}}) == 422                              # blank
+    assert put({"rep": "Somebody else"}) == 422                                     # rep must be a speaker
+    other, _ = _other_org_client(monkeypatch)
+    assert other.put(f"/v1/calls/{call_id}/speakers", json={"rep": "Speaker 1"}).status_code == 404
+    assert other.post(f"/v1/calls/{call_id}/reanalyze").status_code == 404
+    assert client.post(f"/v1/calls/{uuid.uuid4()}/reanalyze").status_code == 404
