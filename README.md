@@ -8,7 +8,8 @@ transcript lines that support it.
 > **Status: v0.1.0, early.** Text and audio calls, rule-based and local-LLM analysis, a web
 > UI, a webhook connector, API keys with per-organization separation, and an audit log all
 > work and are tested. Not yet: speaker separation for mono recordings, telephony/meeting
-> connectors, rate limiting. See the [roadmap](docs/roadmap.md).
+> connectors. Run it behind a reverse proxy for TLS and rate limiting. See the
+> [roadmap](docs/roadmap.md).
 
 ## Why
 
@@ -92,6 +93,9 @@ curl -s localhost:8000/v1/analyze -H "Authorization: Bearer $KEY" -H 'content-ty
   delete calls older than 90 days, checked hourly. The audit log keeps a record that a deletion
   happened, but not the deleted content.
 - Without a database, `POST /v1/analyze` is a stateless open endpoint (nothing is stored).
+- **Request limits.** Uploads may be up to 500 MB and other requests up to 10 MB, enforced while
+  the body streams in. Uploads are authenticated before any of the body is read. Rate limiting
+  is left to the reverse proxy, because behind a proxy every client shares one address.
 
 ### Sending calls from another system (webhook)
 

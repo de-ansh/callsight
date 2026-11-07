@@ -66,6 +66,33 @@ def test_unsafe_urls_are_rejected(url):
         remote.check_url(url)
 
 
+def test_fetch_connects_to_the_checked_address_only(monkeypatch, tmp_path):
+    """DNS rebinding: a second lookup could return an internal IP, so fetch must not look up again."""
+    lookups, connects = [], []
+
+    def getaddrinfo(host, port, **kw):
+        lookups.append(host)
+        ip = "93.184.216.34" if len(lookups) == 1 else "127.0.0.1"  # rebinds after the first answer
+        return [(None, None, None, None, (ip, port))]
+
+    def create_connection(address, timeout=None):
+        connects.append(address)
+        raise ConnectionRefusedError("stop here")  # no real network in tests
+
+    monkeypatch.setattr(socket, "getaddrinfo", getaddrinfo)
+    monkeypatch.setattr(socket, "create_connection", create_connection)
+    with pytest.raises(ConnectionRefusedError):
+        remote.fetch("https://files.example.com/a.mp3", str(tmp_path / "a.mp3"))
+    assert lookups == ["files.example.com"]
+    assert connects == [("93.184.216.34", 443)]
+
+
+def test_pinned_connection_still_verifies_the_hostname():
+    conn = remote._PinnedHTTPSConnection("files.example.com", "93.184.216.34", 443, 5)
+    assert conn.host == "files.example.com"  # used as server_hostname for SNI and certificate checks
+    assert conn._context.check_hostname and conn._context.verify_mode == remote.ssl.CERT_REQUIRED
+
+
 def test_hostnames_resolving_to_private_addresses_are_rejected(monkeypatch):
     monkeypatch.setattr(socket, "getaddrinfo", lambda *a, **k: [(None, None, None, None, ("192.168.1.10", 443))])
     with pytest.raises(remote.UnsafeURL, match="non-public"):

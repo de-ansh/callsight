@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import atexit
+import threading
+from contextlib import AbstractContextManager
 from dataclasses import asdict
 from typing import Any
 from uuid import UUID
@@ -9,13 +12,36 @@ from uuid import UUID
 import psycopg
 from psycopg.rows import dict_row
 from psycopg.types.json import Jsonb
+from psycopg_pool import ConnectionPool
 
 from .models import CallReport, Transcript
 
+POOL_MAX_SIZE = 10  # per process; FastAPI's threadpool waits for a free connection beyond this
+_pools: dict[str, ConnectionPool] = {}
+_pools_lock = threading.Lock()
 
-def connect(database_url: str) -> psycopg.Connection:
-    # shortcut: one connection per request, no pool; switch to psycopg_pool when traffic needs it.
-    return psycopg.connect(database_url, row_factory=dict_row)
+
+@atexit.register
+def _close_pools() -> None:
+    for pool in _pools.values():
+        pool.close(timeout=2)
+
+
+def connect(database_url: str) -> AbstractContextManager[psycopg.Connection]:
+    """A pooled connection: `with connect(url) as conn:` commits on success, rolls back on error,
+    and returns the connection to the pool."""
+    pool = _pools.get(database_url)
+    if pool is None:
+        with _pools_lock:
+            pool = _pools.get(database_url)
+            if pool is None:
+                pool = ConnectionPool(
+                    database_url, kwargs={"row_factory": dict_row}, min_size=1, max_size=POOL_MAX_SIZE,
+                    check=ConnectionPool.check_connection,  # survives a database restart
+                    open=True, name="callsight",
+                )
+                _pools[database_url] = pool
+    return pool.connection()
 
 
 # A job claimed longer ago than this is assumed to belong to a crashed worker and is retried.

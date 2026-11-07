@@ -119,3 +119,21 @@ def test_split_on_pauses_starts_a_turn_at_each_silence():
              (38.0, 38.5, " Understood,"), (38.6, 39.0, " sure.")]
     assert split_on_pauses(words) == [(0.0, "Thanks for joining."), (38.0, "Understood, sure.")]
     assert split_on_pauses([]) == []
+
+
+def test_storage_failure_is_a_clear_503(dummy_backends, monkeypatch):
+    from minio.error import S3Error
+    from urllib3.exceptions import MaxRetryError
+
+    from callsight import recordings
+
+    for exc in (
+        S3Error("XMinioStorageFull", "Storage backend has reached its minimum free drive threshold.", "r", "id", "h", None),
+        MaxRetryError(None, "/recordings", "connection refused"),
+    ):
+        def fail(*args, exc=exc, **kwargs):
+            raise exc
+
+        monkeypatch.setattr(recordings, "put", fail)
+        res = upload("call.wav", b"RIFF")
+        assert res.status_code == 503 and "storage is unavailable" in res.json()["detail"]
