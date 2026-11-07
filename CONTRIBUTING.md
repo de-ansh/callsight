@@ -3,9 +3,8 @@
 Thanks for helping. The bar for a change: it is tested, every insight still cites the transcript
 lines that justify it, and the README states what it does and does not do.
 
-**Before your first PR:** the project has not chosen its license yet
-([docs/license-decision.md](docs/license-decision.md)), so outside contributions cannot be merged
-until it has. Open an issue to discuss in the meantime.
+Callsight is licensed under [Apache-2.0](LICENSE). By opening a pull request you agree that
+your contribution is licensed under the same terms (Apache-2.0 §5); there is no separate CLA.
 
 ## Set up
 

@@ -1,6 +1,8 @@
 # License decision: AGPL-3.0 vs Apache-2.0
 
-**Status: pending. Owner decides.** No LICENSE file exists, so nobody may reuse the code yet.
+**Status: decided 2026-11-07: Apache-2.0** (LICENSE, NOTICE). No CLA: under Apache-2.0
+§5, contributions come in under the same license, which already allows a closed `ee/` area
+later. A CLA would only matter for relicensing under different terms; revisit it then.
 This is an engineering summary, not legal advice. Have a lawyer read the final choice if
 a company will depend on it.
 

@@ -12,7 +12,7 @@ Rough six-week plan for v0.1. Dates are intentionally relative; adjust after eac
 - **Validate the market before going further:** check current pricing of commercial tools,
   survey existing open-source projects, and talk to a handful of target users
   (script, outreach and go/no-go criteria: [interview-kit.md](interview-kit.md))
-- Decide the license (AGPL-3.0 vs Apache-2.0 and open-core boundary): see [license-decision.md](license-decision.md)
+- License: decided, Apache-2.0 (see [license-decision.md](license-decision.md))
 
 ## Week 3: audio (done)
 - Upload endpoint storing recordings in MinIO
@@ -32,10 +32,10 @@ Rough six-week plan for v0.1. Dates are intentionally relative; adjust after eac
 - Auth, multi-tenant separation, audit log: done
 - Configurable analyzer selection: done (`CALLSIGHT_ANALYZERS`). Rubric weights: not built, because
   there is no call score to weight yet; decide after user interviews whether teams want one
-- Docs and contribution guide: done. **Versioned release: blocked on the license decision**
+- Docs and contribution guide: done. Versioned release: v0.1.0
 
 ## Open questions
-- License and open-core boundary
+- Open-core boundary (what, if anything, goes in a commercial `ee/`)
 - Which meeting/telephony sources to support first
 - Languages beyond English
 - Privacy and consent requirements for recording in target markets

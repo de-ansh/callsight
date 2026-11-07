@@ -1,11 +1,12 @@
 [build-system]
-requires = ["setuptools>=68"]
+requires = ["setuptools>=77"]  # PEP 639 license expressions
 build-backend = "setuptools.build_meta"
 
 [project]
 name = "callsight"
 version = "0.1.0"
 description = "Self-hostable, open-source conversation intelligence"
+license = "Apache-2.0"
 requires-python = ">=3.10"
 # The analysis core has no third-party dependencies; these are only for serving the HTTP API.
 dependencies = [

@@ -5,9 +5,10 @@ Feed it a call, get back a summary and flagged risks (pricing objections, compet
 mentions, no next step, rep talking too much), with every insight linked to the exact
 transcript lines that support it.
 
-> **Status: early skeleton (v0.1).** The analysis core and Postgres persistence work and
-> are tested. Audio transcription, connectors and the UI do not exist yet. See the
-> [roadmap](docs/roadmap.md).
+> **Status: v0.1.0, early.** Text and audio calls, rule-based and local-LLM analysis, a web
+> UI, a webhook connector, API keys with per-organization separation, and an audit log all
+> work and are tested. Not yet: speaker separation for mono recordings, telephony/meeting
+> connectors, rate limiting. See the [roadmap](docs/roadmap.md).
 
 ## Why
 
@@ -15,8 +16,8 @@ Conversation-intelligence tools are sold per seat and keep your recordings on so
 else's servers. The software around the models is the replaceable part. Callsight aims
 to be a self-hosted alternative where you choose the models (local or API) and keep the data.
 
-*The market case is not yet validated: pricing, existing open-source projects and buyer
-pain still need to be checked before building past week 2 of the roadmap.*
+*Pricing and existing open-source projects have been surveyed; whether buyers want this has
+not been validated with users yet ([interview kit](docs/interview-kit.md)).*
 
 ## What works today
 
@@ -157,5 +158,5 @@ Add it to `DEFAULT_ANALYZERS` in `pipeline.py` (configurable selection is on the
 
 ## License
 
-Not chosen yet (AGPL-3.0 vs Apache-2.0 is an open decision; see the roadmap). No license
-file is included, so nothing is licensed for reuse until one is added.
+[Apache License 2.0](LICENSE). Third-party models you download (Whisper weights, Ollama
+models) keep their own licenses. Why Apache: [docs/license-decision.md](docs/license-decision.md).
