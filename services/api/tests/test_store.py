@@ -159,8 +159,31 @@ def test_demo_loads_example_calls_once(monkeypatch, capsys):
     assert admin.main(["demo"]) == 0
     first = capsys.readouterr().out
     assert "Loaded 6 example call(s)" in first and "API key: cs_" in first
+    with store.connect(DB_URL) as conn:
+        demo = conn.execute("SELECT id, competitors FROM orgs WHERE name = 'demo'").fetchone()
+        created = conn.execute("SELECT count(*) AS n FROM audit_log WHERE org_id = %s AND action = 'call.create'",
+                               (demo["id"],)).fetchone()["n"]
+    assert demo["competitors"] == ["AcmeCall", "Gong", "Chorus"] and created == 6
     assert admin.main(["demo"]) == 0
     assert "Loaded 0 example call(s)" in capsys.readouterr().out   # second run adds a key, not duplicates
     with store.connect(DB_URL) as conn:
         n = conn.execute("SELECT count(*) AS n FROM calls c JOIN orgs o ON o.id = c.org_id WHERE o.name = 'demo'").fetchone()["n"]
     assert n == 6
+
+
+def test_org_competitors_are_flagged_and_isolated(client, monkeypatch):
+    assert client.get("/v1/settings").json() == {"competitors": []}
+    res = client.put("/v1/settings", json={"competitors": [" Zorbcorp ", "Gong", "Gong"]})
+    assert res.json() == {"competitors": ["Zorbcorp", "Gong"]}            # trimmed, de-duplicated
+    assert client.put("/v1/settings", json={"competitors": [""]}).status_code == 422
+    assert client.put("/v1/settings", json={"competitors": ["x"] * 51}).status_code == 422
+
+    said = "[00:00] Alex: Hi\n[00:05] Priya: We are also talking to Zorbcorp.\n"
+    mine = client.post("/v1/analyze", json={"transcript": said}).json()
+    assert any(i["title"] == "Competitor mentioned: Zorbcorp" for i in mine["insights"])
+    other, _ = _other_org_client(monkeypatch)
+    theirs = other.post("/v1/analyze", json={"transcript": said}).json()
+    assert not any(i["kind"] == "competitor_mention" for i in theirs["insights"])  # their list is empty
+    assert other.get("/v1/settings").json() == {"competitors": []}
+    assert any(r["action"] == "settings.update" for r in client.get("/v1/audit").json())
+    client.put("/v1/settings", json={"competitors": []})

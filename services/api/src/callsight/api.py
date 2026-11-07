@@ -15,12 +15,12 @@ import anyio
 from minio.error import MinioException
 from urllib3.exceptions import HTTPError as Urllib3Error
 from pathlib import Path, PurePath
-from typing import Literal
+from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, StringConstraints
 
 from . import __version__, auth, recordings, remote, retention, store
 from .auth import Principal
@@ -140,9 +140,13 @@ def analyze_call(request: AnalyzeRequest, http: Request) -> dict:
     """Analyze a transcript. With a database configured, an API key is required and the call is stored."""
     settings = Settings.from_env()
     principal = require_key(http) if settings.database_url else None
+    competitors = list(request.competitors)
+    if principal is not None:
+        with store.connect(settings.database_url) as conn:
+            competitors += store.org_competitors(conn, principal.org_id)
     try:
         transcript, report = analyze_text_with_transcript(
-            request.transcript, call_id=request.call_id, settings=settings, extra_competitors=request.competitors
+            request.transcript, call_id=request.call_id, settings=settings, extra_competitors=competitors
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -191,6 +195,7 @@ async def connector_webhook(org_id: UUID, name: str, request: Request) -> dict:
         raise HTTPException(status_code=404, detail=f"Unknown connector '{name}'")
     with store.connect(database_url) as conn:
         secret = store.org_webhook_secret(conn, org_id)
+        competitors = store.org_competitors(conn, org_id)
     if secret is None:
         raise HTTPException(status_code=404, detail="Unknown organization")
     body = await request.body()
@@ -216,7 +221,7 @@ async def connector_webhook(org_id: UUID, name: str, request: Request) -> dict:
         return {"id": new_id, "status": "queued"}
     try:
         transcript, report = analyze_text_with_transcript(
-            inbound.transcript, call_id=inbound.external_id, settings=settings
+            inbound.transcript, call_id=inbound.external_id, settings=settings, extra_competitors=competitors
         )
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from exc
@@ -305,6 +310,29 @@ def delete_call(call_id: UUID, principal: Principal = Depends(require_key)) -> N
     """Delete a call, its transcript, insights and recording. The audit log keeps a record that it happened."""
     if not retention.delete_call(Settings.from_env(), principal.org_id, call_id, principal.actor):
         raise HTTPException(status_code=404, detail="Call not found")
+
+
+class OrgSettings(BaseModel):
+    competitors: list[Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]] = Field(
+        default_factory=list, max_length=50, description="Competitor names to flag when mentioned on a call"
+    )
+
+
+@app.get("/v1/settings")
+def get_settings(principal: Principal = Depends(require_key)) -> OrgSettings:
+    """This organization's settings."""
+    with store.connect(Settings.from_env().database_url) as conn:
+        return OrgSettings(competitors=list(store.org_competitors(conn, principal.org_id)))
+
+
+@app.put("/v1/settings")
+def put_settings(body: OrgSettings, principal: Principal = Depends(require_key)) -> OrgSettings:
+    """Replace this organization's settings. They apply to calls analyzed from now on."""
+    competitors = list(dict.fromkeys(body.competitors))  # keep order, drop duplicates
+    with store.connect(Settings.from_env().database_url) as conn:
+        store.set_org_competitors(conn, principal.org_id, competitors)
+        store.audit(conn, principal.org_id, principal.actor, "settings.update", None, {"competitors": competitors})
+    return OrgSettings(competitors=competitors)
 
 
 @app.get("/v1/audit")

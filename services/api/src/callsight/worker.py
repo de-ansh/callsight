@@ -40,7 +40,9 @@ def process_one(settings: Settings, asr) -> bool:
             else:  # handed over by a connector as a URL: fetch it into storage first
                 path = _fetch_into_storage(settings, call_id, job["recording_url"], tmp)
             transcript = asr.transcribe(path, job["external_id"])
-        report = analyze_transcript(transcript, settings=settings)
+        with store.connect(settings.database_url) as conn:
+            competitors = store.org_competitors(conn, job["org_id"])
+        report = analyze_transcript(transcript, settings=settings, extra_competitors=competitors)
         with store.connect(settings.database_url) as conn:
             store.complete_job(conn, call_id, transcript, report)
         log.info("call %s done: %d segments, %d insights", call_id, len(transcript.segments), len(report.insights))

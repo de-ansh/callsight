@@ -98,6 +98,8 @@ curl -s localhost:8000/v1/analyze -H "Authorization: Bearer $KEY" -H 'content-ty
 - **Recordings** are played through short-lived signed links (6 hours) because audio players
   cannot send an API key. Set `CALLSIGHT_SECRET_KEY` so links survive restarts and work across
   API replicas.
+- **Settings per organization.** Competitor names to flag are kept per org on the *Settings*
+  page (`GET`/`PUT /v1/settings`); `CALLSIGHT_COMPETITORS` adds names for every org.
 - **Deleting data.** `DELETE /v1/calls/{id}` (or *Delete call* in the UI) removes the call, its
   transcript, insights and recording from storage. `CALLSIGHT_RETENTION_DAYS=90` makes the worker
   delete calls older than 90 days, checked hourly. The audit log keeps a record that a deletion

@@ -199,3 +199,10 @@ def test_competitor_matches_speech_to_text_spacing():
     report = analyze(t, build_analyzers(["competitors"], competitors=("AcmeCall",)))
     insight = next(i for i in report.insights if i.kind == "competitor_mention")
     assert [e.segment_id for e in insight.evidence] == [1]  # "Acme calling" is not a mention
+
+
+def test_polite_not_right_now_after_anything_else_is_not_a_timing_objection():
+    t = parse("[00:00] Alex: Anything else I can help with?\n[00:03] Priya: Not right now, thanks.\n"
+              "[00:06] Alex: Could we start next month?\n[00:09] Priya: Not right now, the budget is frozen until March.\n")
+    insight = next(i for i in analyze(t, build_analyzers(["objections"])).insights if i.kind == "timing_objection")
+    assert [e.segment_id for e in insight.evidence] == [3]  # the real objection, not the polite close

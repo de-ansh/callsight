@@ -57,6 +57,8 @@ def main(argv: list[str] | None = None) -> int:
 def _demo(conn, settings: Settings) -> int:
     key = create_key(conn, "demo", "demo")
     org_id = conn.execute("SELECT id FROM orgs WHERE name = 'demo'").fetchone()["id"]
+    if not store.org_competitors(conn, org_id):  # so later uploads in the demo org flag them too
+        store.set_org_competitors(conn, org_id, list(DEMO_COMPETITORS))
     have = {r["external_id"] for r in conn.execute("SELECT external_id FROM calls WHERE org_id = %s", (org_id,))}
     loaded = 0
     for f in sorted(files("callsight.demo").iterdir(), key=lambda f: f.name):
@@ -66,7 +68,8 @@ def _demo(conn, settings: Settings) -> int:
         transcript, report = analyze_text_with_transcript(
             f.read_text(encoding="utf-8"), call_id=name, settings=settings, extra_competitors=DEMO_COMPETITORS
         )
-        store.save_call(conn, org_id, transcript, report, source="demo")
+        call_id = store.save_call(conn, org_id, transcript, report, source="demo")
+        store.audit(conn, org_id, "admin-cli", "call.create", str(call_id), {"source": "demo"})
         loaded += 1
     print(f"Loaded {loaded} example call(s) into the 'demo' organization.")
     print(f"API key: {key}")
