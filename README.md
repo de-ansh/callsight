@@ -31,7 +31,9 @@ pain still need to be checked before building past week 2 of the roadmap.*
 | Audio: `POST /v1/calls/upload` → MinIO → background worker (faster-whisper, speakers split by stereo channel) → stored report | Working, tested: full stack verified with a real 2-min stereo call (about 50 s to transcribe on CPU in Docker) |
 | `docker-compose.yml` (Postgres+pgvector, MinIO, API, worker, optional Ollama) | `db`, `minio`, `api` and `worker` built and run. MinIO is Chainguard's build (`minio/minio` is no longer published), pinned by digest |
 | Web UI at `/`: upload, paste, call list, transcript with click-to-jump evidence and audio seek | Working; checked in headless Chrome against real calls |
-| Webhook connector (`POST /v1/connectors/generic/webhook`, HMAC-signed; transcript or https recording URL) | Working, tested (SSRF guard, signatures, worker fetch) |
+| Webhook connector (`POST /v1/orgs/{org}/connectors/generic/webhook`, HMAC-signed per org; transcript or https recording URL) | Working, tested (SSRF guard, signatures, worker fetch) |
+| API keys, organizations (each key sees only its org's calls), audit log (`GET /v1/audit`) | Working, tested including cross-org access attempts |
+| LLM analyzer `llm_insights` (objection types incl. authority/need, commitments, next step, sentiment shifts) with an eval harness | Working; see [evals/README.md](evals/README.md) for measured precision/recall |
 | Mono-recording speaker separation, telephony/meeting connectors, auth | Not started |
 
 ## Try it (no dependencies beyond Python 3.10+)
@@ -58,27 +60,44 @@ python -m pytest
 ## Run the stack
 
 ```bash
-cp .env.example .env          # then change the passwords
+cp .env.example .env          # then change the passwords and set CALLSIGHT_SECRET_KEY
 docker compose up --build     # API on http://localhost:8000
 docker compose --profile local-llm up   # also start Ollama (set CALLSIGHT_LLM_PROVIDER=ollama)
+
+# Create an API key (the org is created if it does not exist; the key is shown once):
+docker compose exec api python -m callsight.admin create-key --org acme --name alice
 ```
 
-Open http://localhost:8000 to upload recordings, paste transcripts and browse calls.
-Clicking an insight's quote jumps to that line and plays the recording from there.
+Open http://localhost:8000, enter the key, then upload recordings, paste transcripts and browse
+calls. Clicking an insight's quote jumps to that line and plays the recording from there.
 
 ```bash
-curl -s localhost:8000/v1/analyze -H 'content-type: application/json' \
+curl -s localhost:8000/v1/analyze -H "Authorization: Bearer $KEY" -H 'content-type: application/json' \
   -d '{"call_id":"demo","transcript":"[00:00] Alex: Hi\n[00:10] Priya: The price is too expensive."}'
 ```
 
+### Access control
+
+- **Organizations and keys.** Every API key belongs to one organization and can only see and
+  create that organization's calls; another org's call returns 404. Keys are stored as
+  SHA-256 hashes and can be revoked: `python -m callsight.admin revoke-key --org acme --name alice`.
+- **Audit log.** Creating or reading a call, playing its recording and creating keys are
+  recorded with who did it: `GET /v1/audit` (or *Audit log* in the UI).
+- **Recordings** are played through short-lived signed links (6 hours) because audio players
+  cannot send an API key. Set `CALLSIGHT_SECRET_KEY` so links survive restarts and work across
+  API replicas.
+- Without a database, `POST /v1/analyze` is a stateless open endpoint (nothing is stored).
+
 ### Sending calls from another system (webhook)
 
-Set `CALLSIGHT_WEBHOOK_SECRET`, then POST JSON signed with HMAC-SHA256 of the raw body:
+Each organization has its own webhook secret and URL:
+`python -m callsight.admin webhook-secret --org acme` prints both. POST JSON signed with
+HMAC-SHA256 of the raw body:
 
 ```bash
 BODY='{"call_id":"crm-123","recording_url":"https://files.example.com/calls/123.mp3"}'
-SIG=$(printf %s "$BODY" | openssl dgst -sha256 -hmac "$CALLSIGHT_WEBHOOK_SECRET" | sed 's/^.* //')
-curl -s localhost:8000/v1/connectors/generic/webhook -H "X-Callsight-Signature: sha256=$SIG" -d "$BODY"
+SIG=$(printf %s "$BODY" | openssl dgst -sha256 -hmac "$WEBHOOK_SECRET" | sed 's/^.* //')
+curl -s "localhost:8000/v1/orgs/$ORG_ID/connectors/generic/webhook" -H "X-Callsight-Signature: sha256=$SIG" -d "$BODY"
 ```
 
 Send `transcript` instead of `recording_url` to analyze text right away. Recording URLs must
@@ -93,11 +112,18 @@ services/api/src/callsight/
   models.py        Transcript, Segment, Insight, Evidence, CallReport
   interfaces.py    ASR / LLM / Analyzer protocols (the plugin contracts)
   registry.py      register("analyzer", "name") plugin registry
-  providers/       text transcript parser, Ollama LLM
-  analyzers/       rule-based baseline analyzers
+  providers/       text transcript parser, Whisper (audio), Ollama LLM
+  analyzers/       rule-based baseline analyzers, LLM analyzer (llm_insights)
   pipeline.py      transcript -> analyzers -> optional LLM summary -> report
-  service.py       entry point shared by CLI and API
-  cli.py, api.py   thin front-ends
+  service.py       entry point shared by CLI, API and worker
+  store.py         Postgres persistence, job queue, audit log (all queries scoped by org)
+  migrations/      numbered SQL migrations, applied at startup
+  auth.py          API keys, orgs, signed recording links
+  connectors.py    inbound webhook connectors
+  worker.py        background transcription/analysis of recordings
+  evals.py         precision/recall harness (python -m callsight eval)
+  static/          the web UI (one HTML file, no build step)
+  cli.py, api.py, admin.py   front-ends
 ```
 
 See [docs/architecture.md](docs/architecture.md) for the diagram and design decisions.

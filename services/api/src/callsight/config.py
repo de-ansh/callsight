@@ -26,7 +26,7 @@ class Settings:
     s3_secret_key: str = ""
     s3_bucket: str = "recordings"
     s3_secure: bool = False  # True for https endpoints
-    webhook_secret: str = ""  # shared HMAC secret for /v1/connectors/*/webhook; empty = disabled
+    secret_key: str = ""  # signs short-lived recording links; set it when running more than one API process
     analyzers: tuple[str, ...] = ()  # empty = pipeline.DEFAULT_ANALYZERS
     whisper_model: str = "small"  # faster-whisper size: tiny, base, small, medium, large-v3
 
@@ -45,7 +45,7 @@ class Settings:
             s3_secret_key=env.get("CALLSIGHT_S3_SECRET_KEY", ""),
             s3_bucket=env.get("CALLSIGHT_S3_BUCKET", cls.s3_bucket),
             s3_secure=env.get("CALLSIGHT_S3_SECURE", "").strip().lower() in ("1", "true", "yes"),
-            webhook_secret=env.get("CALLSIGHT_WEBHOOK_SECRET", ""),
+            secret_key=env.get("CALLSIGHT_SECRET_KEY", ""),
             analyzers=_csv(env.get("CALLSIGHT_ANALYZERS")),
             whisper_model=env.get("CALLSIGHT_WHISPER_MODEL", cls.whisper_model),
         )

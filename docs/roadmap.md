@@ -14,24 +14,25 @@ Rough six-week plan for v0.1. Dates are intentionally relative; adjust after eac
   (script, outreach and go/no-go criteria: [interview-kit.md](interview-kit.md))
 - Decide the license (AGPL-3.0 vs Apache-2.0 and open-core boundary): see [license-decision.md](license-decision.md)
 
-## Week 3: audio
+## Week 3: audio (done)
 - Upload endpoint storing recordings in MinIO
 - Local ASR provider (for example a Whisper-family model) with speaker separation
 - Background worker so long files do not block requests
 
-## Week 4: model-powered analysis and evals
+## Week 4: model-powered analysis and evals (done; numbers in evals/README.md)
 - LLM analyzers (objection types, sentiment shifts, commitment extraction) behind the same interface
 - Labelled transcript set and an eval harness reporting precision/recall per analyzer
 - Compare against the rule-based baseline; publish the numbers
 
-## Week 5: integrations and UI
-- Connector interface; first connectors (generic webhook, one meeting/telephony source)
+## Week 5: integrations and UI (done, except a telephony/meeting connector)
+- Connector interface; first connectors (generic webhook done; a meeting/telephony source needs a real account to build against)
 - Web UI: call list, transcript view with click-to-jump evidence
 
-## Week 6: hardening and release
-- Auth, multi-tenant separation, audit log
-- Configurable analyzer selection and rubric weights
-- Docs, versioned release, contribution guide
+## Week 6: hardening and release (done except the release)
+- Auth, multi-tenant separation, audit log: done
+- Configurable analyzer selection: done (`CALLSIGHT_ANALYZERS`). Rubric weights: not built, because
+  there is no call score to weight yet; decide after user interviews whether teams want one
+- Docs and contribution guide: done. **Versioned release: blocked on the license decision**
 
 ## Open questions
 - License and open-core boundary

@@ -4,9 +4,9 @@
 
 ```mermaid
 flowchart LR
-    A[Call source<br/>upload / webhook / connector] --> B[ASR provider<br/>text parser today,<br/>audio models later]
+    A[Call source<br/>upload / paste / webhook] --> B[ASR provider<br/>text parser, or Whisper<br/>in the background worker]
     B --> C[Transcript<br/>segments with ids + timestamps]
-    C --> D[Analyzers<br/>rule-based now,<br/>LLM-powered later]
+    C --> D[Analyzers<br/>rule-based and<br/>LLM-powered]
     C --> E[LLM summary<br/>optional]
     D --> F[CallReport<br/>insights + evidence]
     E --> F
@@ -15,8 +15,9 @@ flowchart LR
     A -. recordings .-> I[(MinIO object storage)]
 ```
 
-Solid boxes up to `CallReport` and the CLI/API exist today. Postgres, MinIO and the UI are
-provisioned or planned but not yet connected.
+Everything in the diagram exists. Recordings are stored in MinIO and processed by a separate
+worker that claims jobs from Postgres; text is analyzed inside the request. Every stored row
+belongs to an organization, and every API query filters by it.
 
 ## Design decisions
 

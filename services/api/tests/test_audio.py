@@ -34,17 +34,17 @@ from callsight import worker  # noqa: E402
 from callsight.api import app  # noqa: E402
 from callsight.config import Settings  # noqa: E402
 
-client = TestClient(app)
+anon = TestClient(app)
 
 
 @pytest.fixture
-def dummy_backends(monkeypatch):
+def dummy_backends(monkeypatch, fake_principal):
     # Validation runs before any connection is made, so unreachable addresses are fine here.
     monkeypatch.setenv("CALLSIGHT_DATABASE_URL", "postgresql://unused@127.0.0.1:1/x")
     monkeypatch.setenv("CALLSIGHT_S3_ENDPOINT", "127.0.0.1:1")
 
 
-def upload(name: str, data: bytes, **form):
+def upload(name: str, data: bytes, client=anon, **form):
     return client.post("/v1/calls/upload", files={"file": (name, io.BytesIO(data))}, data=form)
 
 
@@ -57,7 +57,7 @@ def test_upload_rejects_empty_file(dummy_backends):
     assert upload("call.wav", b"").status_code == 422
 
 
-def test_upload_needs_storage(monkeypatch):
+def test_upload_needs_storage(monkeypatch, fake_principal):
     monkeypatch.setenv("CALLSIGHT_DATABASE_URL", "postgresql://unused@127.0.0.1:1/x")
     monkeypatch.delenv("CALLSIGHT_S3_ENDPOINT", raising=False)
     assert upload("call.wav", b"RIFF").status_code == 503
@@ -86,8 +86,7 @@ class BrokenASR:
 
 
 @pytest.mark.skipif(not (DB_URL and S3), reason="needs CALLSIGHT_TEST_DATABASE_URL and CALLSIGHT_TEST_S3_ENDPOINT")
-def test_upload_is_processed_by_worker(monkeypatch):
-    monkeypatch.setenv("CALLSIGHT_DATABASE_URL", DB_URL)
+def test_upload_is_processed_by_worker(monkeypatch, client):
     monkeypatch.setenv("CALLSIGHT_S3_ENDPOINT", S3)
     monkeypatch.setenv("CALLSIGHT_S3_ACCESS_KEY", os.environ["CALLSIGHT_TEST_S3_ACCESS_KEY"])
     monkeypatch.setenv("CALLSIGHT_S3_SECRET_KEY", os.environ["CALLSIGHT_TEST_S3_SECRET_KEY"])
@@ -95,8 +94,8 @@ def test_upload_is_processed_by_worker(monkeypatch):
     while worker.process_one(settings, BrokenASR()):  # drain jobs left by earlier runs
         pass
 
-    ok = upload("call.mp3", b"fake-audio-bytes", call_id="audio-ok")
-    bad = upload("call.wav", b"fake-audio-bytes", call_id="audio-bad")
+    ok = upload("call.mp3", b"fake-audio-bytes", client=client, call_id="audio-ok")
+    bad = upload("call.wav", b"fake-audio-bytes", client=client, call_id="audio-bad")
     assert ok.status_code == bad.status_code == 202
     assert client.get(f"/v1/calls/{ok.json()['id']}").json()["status"] == "queued"
 
