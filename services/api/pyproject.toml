@@ -30,7 +30,7 @@ callsight = "callsight.cli:main"
 where = ["src"]
 
 [tool.setuptools.package-data]
-callsight = ["migrations/*.sql", "static/*"]
+callsight = ["migrations/*.sql", "static/*", "demo/*.txt"]
 
 [tool.pytest.ini_options]
 pythonpath = ["src"]

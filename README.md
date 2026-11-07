@@ -59,6 +59,16 @@ python -m pytest
 ../../scripts/test-services.sh down
 ```
 
+## Quick start (about 2 minutes)
+
+```bash
+docker compose up --build -d
+docker compose exec api python -m callsight.admin demo
+```
+
+The second command loads six example calls into a `demo` organization and prints an API key.
+Open http://localhost:8000, paste the key, and click any insight's quote to jump to the line.
+
 ## Run the stack
 
 ```bash

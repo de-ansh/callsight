@@ -15,6 +15,7 @@ import anyio
 from minio.error import MinioException
 from urllib3.exceptions import HTTPError as Urllib3Error
 from pathlib import Path, PurePath
+from typing import Literal
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
@@ -273,10 +274,14 @@ def get_recording(
 
 @app.get("/v1/calls")
 def list_calls(
-    limit: int = Query(50, ge=1, le=200), offset: int = Query(0, ge=0), principal: Principal = Depends(require_key)
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    q: str | None = Query(None, max_length=200, description="Match the call name or anything said in it"),
+    status: Literal["queued", "processing", "done", "failed"] | None = None,
+    principal: Principal = Depends(require_key),
 ) -> list[dict]:
     with store.connect(Settings.from_env().database_url) as conn:
-        return store.list_calls(conn, principal.org_id, limit, offset)
+        return store.list_calls(conn, principal.org_id, limit, offset, query=(q or "").strip() or None, status=status)
 
 
 @app.get("/v1/calls/{call_id}")

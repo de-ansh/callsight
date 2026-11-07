@@ -125,3 +125,42 @@ def test_signed_recording_links_are_bound_to_call_org_and_time():
     assert not auth.verify_recording(call, org, "key:alice", exp, sig, "other-secret")
     q = params(auth.sign_recording(call, org, "key:alice", "s3cret", now=0))
     assert not auth.verify_recording(call, org, "key:alice", int(q["expires"]), q["sig"], "s3cret")  # expired
+
+
+# --- search, filters, demo ------------------------------------------------------------------
+
+
+def test_search_by_name_and_words_said_with_severity_counts(client):
+    tag = uuid.uuid4().hex[:8]
+    a = client.post("/v1/analyze", json={"call_id": f"search-{tag}-a", "transcript": TRANSCRIPT}).json()["id"]
+    b = client.post("/v1/analyze", json={"call_id": f"other-{tag}",
+                                         "transcript": "[00:00] Alex: Hi\n[00:05] Priya: Let us talk about zebras.\n"}).json()["id"]
+    ids = lambda **p: [c["id"] for c in client.get("/v1/calls", params={"limit": 200, **p}).json()]
+    assert ids(q=f"search-{tag}") == [a]                  # by name
+    assert ids(q="ZEBRAS") == [b]                          # by words said, case-insensitive
+    assert ids(q="100%") == [] and ids(q="_") != ids()     # LIKE wildcards are literal
+    assert a in ids(status="done") and a not in ids(status="queued")
+    assert client.get("/v1/calls", params={"status": "bogus"}).status_code == 422
+    row = next(c for c in client.get("/v1/calls", params={"q": f"search-{tag}"}).json())
+    assert row["high_count"] + row["medium_count"] <= row["insight_count"] and row["medium_count"] >= 1
+
+
+def test_search_never_crosses_orgs(client, monkeypatch):
+    marker = f"secret-{uuid.uuid4().hex[:8]}"
+    client.post("/v1/analyze", json={"call_id": marker, "transcript": TRANSCRIPT})
+    other, _ = _other_org_client(monkeypatch)
+    assert other.get("/v1/calls", params={"q": marker}).json() == []
+
+
+def test_demo_loads_example_calls_once(monkeypatch, capsys):
+    from callsight import admin, store
+
+    monkeypatch.setenv("CALLSIGHT_DATABASE_URL", DB_URL)
+    assert admin.main(["demo"]) == 0
+    first = capsys.readouterr().out
+    assert "Loaded 6 example call(s)" in first and "API key: cs_" in first
+    assert admin.main(["demo"]) == 0
+    assert "Loaded 0 example call(s)" in capsys.readouterr().out   # second run adds a key, not duplicates
+    with store.connect(DB_URL) as conn:
+        n = conn.execute("SELECT count(*) AS n FROM calls c JOIN orgs o ON o.id = c.org_id WHERE o.name = 'demo'").fetchone()["n"]
+    assert n == 6

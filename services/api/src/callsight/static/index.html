@@ -68,6 +68,12 @@
   .danger { margin-left: 12px; padding: 3px 10px; border: 1px solid var(--high); background: none;
             color: var(--high); font-size: 13px; }
   .empty { color: var(--muted); padding: 20px 0; }
+  .toolbar { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
+  .toolbar input[type=search] { flex: 1; min-width: 200px; padding: 7px 8px; border: 1px solid var(--line);
+    border-radius: 6px; background: var(--bg); color: var(--text); font: inherit; }
+  .toolbar select { padding: 7px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--bg);
+    color: var(--text); font: inherit; }
+  .sev { font-size: 13px; margin-right: 8px; white-space: nowrap; }
 </style>
 </head>
 <body>
@@ -175,6 +181,13 @@ async function showList() {
   const table = el("table", {}, el("thead", {}, el("tr", {},
     el("th", {}, "Call"), el("th", {}, "Status"), el("th", {}, "Source"), el("th", {}, "Length"),
     el("th", {}, "Insights"), el("th", {}, "Added"))), tbody);
+  const search = el("input", { type: "search", id: "search", placeholder: "Search call names and what was said…",
+    "aria-label": "Search calls" });
+  const statusFilter = el("select", { id: "status-filter", "aria-label": "Filter by status" },
+    el("option", { value: "" }, "All statuses"), ...["done", "queued", "processing", "failed"].map(s => el("option", { value: s }, s)));
+  let searchTimer = null;
+  search.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(loadCalls, 300); });
+  statusFilter.addEventListener("change", loadCalls);
 
   app.replaceChildren(
     el("div", { class: "grid2" },
@@ -206,15 +219,20 @@ async function showList() {
         el("label", { for: "transcript" }, "Transcript"), transcript,
         analyzeBtn, textMsg)),
     el("h2", {}, "Calls"),
-    el("div", { class: "panel" }, table));
+    el("div", { class: "panel" }, el("div", { class: "toolbar" }, search, statusFilter), table));
 
   async function loadCalls() {
     clearTimeout(pollTimer);
     let calls;
-    try { calls = await api("/v1/calls?limit=200"); }
+    const params = new URLSearchParams({ limit: "200" });
+    if (search.value.trim()) params.set("q", search.value.trim());
+    if (statusFilter.value) params.set("status", statusFilter.value);
+    try { calls = await api(`/v1/calls?${params}`); }
     catch (e) { if (!handle(e)) tbody.replaceChildren(el("tr", {}, el("td", { colspan: 6, class: "error" }, e.message))); return; }
     if (!calls.length) {
-      tbody.replaceChildren(el("tr", {}, el("td", { colspan: 6, class: "empty" }, "No calls yet. Upload a recording or paste a transcript.")));
+      const filtered = search.value.trim() || statusFilter.value;
+      tbody.replaceChildren(el("tr", {}, el("td", { colspan: 6, class: "empty" },
+        filtered ? "No calls match." : "No calls yet. Upload a recording or paste a transcript.")));
       return;
     }
     tbody.replaceChildren(...calls.map(c => el("tr", {},
@@ -222,7 +240,11 @@ async function showList() {
       el("td", {}, badge(c.status, `st-${c.status}`)),
       el("td", {}, c.source),
       el("td", {}, c.duration_s == null ? "–" : fmtTime(c.duration_s)),
-      el("td", {}, c.status === "done" ? c.insight_count : "–"),
+      el("td", {}, c.status !== "done" ? "–" : (c.high_count || c.medium_count)
+        ? el("span", {}, c.high_count ? el("span", { class: "sev s-high" }, `${c.high_count} high`) : "",
+                         c.medium_count ? el("span", { class: "sev s-medium" }, `${c.medium_count} med`) : "",
+                         el("span", { class: "meta" }, `${c.insight_count} total`))
+        : el("span", { class: "meta" }, `${c.insight_count} total`)),
       el("td", { class: "meta" }, new Date(c.created_at).toLocaleString()))));
     if (calls.some(c => c.status === "queued" || c.status === "processing")) pollTimer = setTimeout(loadCalls, 4000);
   }

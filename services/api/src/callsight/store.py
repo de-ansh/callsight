@@ -185,12 +185,29 @@ def fail_job(conn: psycopg.Connection, call_id: UUID, error: str) -> None:
         )
 
 
-def list_calls(conn: psycopg.Connection, org_id: UUID, limit: int, offset: int) -> list[dict[str, Any]]:
+def list_calls(
+    conn: psycopg.Connection, org_id: UUID, limit: int, offset: int,
+    query: str | None = None, status: str | None = None,
+) -> list[dict[str, Any]]:
+    """Newest first, with insight counts per severity. `query` matches the call name or anything said."""
+    where, params = ["c.org_id = %s"], [org_id]
+    if status:
+        where.append("c.status = %s")
+        params.append(status)
+    if query:
+        # shortcut: ILIKE scans every segment; add a trigram or full-text index when orgs hold many calls.
+        pattern = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+        where.append("(c.external_id ILIKE %s OR EXISTS (SELECT 1 FROM segments s WHERE s.call_id = c.id AND s.text ILIKE %s))")
+        params += [pattern, pattern]
     return conn.execute(
         "SELECT c.id, c.external_id, c.source, c.status, c.duration_s, c.created_at,"
-        " (SELECT count(*) FROM insights i WHERE i.call_id = c.id) AS insight_count"
-        " FROM calls c WHERE c.org_id = %s ORDER BY c.created_at DESC, c.id LIMIT %s OFFSET %s",
-        (org_id, limit, offset),
+        " count(i.*) AS insight_count,"
+        " count(i.*) FILTER (WHERE i.severity = 'high') AS high_count,"
+        " count(i.*) FILTER (WHERE i.severity = 'medium') AS medium_count"
+        " FROM calls c LEFT JOIN insights i ON i.call_id = c.id"
+        f" WHERE {' AND '.join(where)}"
+        " GROUP BY c.id ORDER BY c.created_at DESC, c.id LIMIT %s OFFSET %s",
+        (*params, limit, offset),
     ).fetchall()
 
 
