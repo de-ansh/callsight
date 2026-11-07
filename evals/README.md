@@ -39,15 +39,30 @@ probe known weaknesses of keyword rules, so they are harder for the baseline tha
 would be, and too few for the percentages to be precise. Treat them as a regression check and a
 direction, not a benchmark. Replace them with labelled real calls once there are users.
 
-| Kind | Baseline precision | Baseline recall |
+| Kind | Rules: precision / recall | `llm_insights`, llama3.2:3b: precision / recall |
 |---|---|---|
-| pricing_objection | 67% | 40% |
-| timing_objection | 33% | 25% |
-| authority_objection | – (no rule) | 0% |
-| need_objection | – (no rule) | 0% |
-| competitor_mention | 100% | 100% |
-| action_item | 89% | 89% |
-| no_next_step | 43% | 75% |
+| pricing_objection | 67% / 40% | **75% / 60%** |
+| timing_objection | 33% / 25% | **67% / 50%** |
+| authority_objection | – / 0% (no rule) | **100% / 100%** (1 label) |
+| need_objection | – / 0% (no rule) | 25% / 50% |
+| competitor_mention | **100% / 100%** | – (not its job) |
+| action_item | **89% / 89%** | 38% / 67% |
+| no_next_step | 43% / 75% | **100% / 100%** |
+
+LLM run: Ollama in Docker on CPU (Apple silicon), temperature 0, JSON mode, about 30 s per call.
+llama3.2:3b, not the default llama3.1 8B, because the 8B model did not fit in the local Docker
+disk; rerun with a larger model before drawing firm conclusions.
+
+**Reading it:** the model is better at objections phrased without keywords and at telling
+whether a next step was really agreed; the rules are better at rep commitments and exact
+competitor names. That suggests a hybrid (rules for `competitor_mention` and `action_item`, the
+model for objections and next steps), not a replacement.
+
+**Prompt finding:** the first prompt contained a JSON example with concrete values
+(`"line": 3`, `"next_step_agreed": false`). The 3B model copied them: it reported a pricing
+objection on line 3 in 7 of 10 calls and "no next step" on every call (pricing precision 22%).
+The prompt now describes the answer format without example values. Check for this pattern
+(the same line number recurring across calls in `-v` output) whenever the prompt changes.
 
 Where the rules fail: objections without trigger words ("more than we can spend", "circle
 back in March"), "price isn't the issue" read as a price objection, a polite "not right now"

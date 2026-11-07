@@ -27,27 +27,30 @@ OBJECTION_TYPES = {
 }
 MAX_PROMPT_LINES = 400
 
-PROMPT = """You analyze sales calls. The sales rep is "{rep}"; everyone else is the prospect.
-Use only what is said in the transcript. Cite line numbers exactly as shown in [brackets].
+# No concrete example values: small models copy example line numbers and booleans into their
+# answers (measured: llama3.2:3b put a pricing objection on "line 3" in 7 of 10 calls).
+PROMPT = """Below is a sales call transcript. Each line starts with its line number in [brackets].
+The sales rep is "{rep}"; everyone else is the prospect.
 
-Report:
-- objections: concerns the PROSPECT raises that could block the deal. type is one of:
+Transcript:
+{lines}
+
+Read the whole transcript, then report only what is actually said in it:
+- objections: concerns the PROSPECT raises that could block the deal. type is one of
   pricing (cost, budget, discounts), timing (not now, later, delays), authority (needs approval
   from someone else), need (doubts they need it or see the value). Do NOT count statements that
   something is NOT a concern, or a polite "no thanks" answering "anything else?".
 - commitments: concrete things the REP promises to do (send, schedule, prepare). Not figures of speech.
 - next_step_agreed: true only if both sides agreed a concrete next meeting or action with a time.
-- next_step_line: the line where it was agreed, or null.
 - sentiment_shifts: lines where the prospect's attitude clearly turns positive or negative.
 
-Answer with one JSON object and nothing else:
-{{"objections": [{{"type": "pricing", "line": 3}}],
- "commitments": [{{"line": 4, "text": "send the pricing breakdown"}}],
- "next_step_agreed": false, "next_step_line": null,
- "sentiment_shifts": [{{"line": 5, "direction": "negative", "note": "budget worry"}}]}}
-
-Transcript:
-{lines}
+Answer with one JSON object with exactly these keys:
+- "objections": list of objects with "type" (pricing, timing, authority or need) and "line" (the line number)
+- "commitments": list of objects with "line" and "text" (a few words)
+- "next_step_agreed": true or false
+- "next_step_line": the line number where the next step was agreed, or null
+- "sentiment_shifts": list of objects with "line", "direction" (positive or negative) and "note"
+Use empty lists when there is nothing to report. Every line number must be one shown in the transcript.
 """
 
 
