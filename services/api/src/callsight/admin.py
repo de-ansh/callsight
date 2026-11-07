@@ -1,14 +1,21 @@
-"""Admin commands. python -m callsight.admin create-key --org acme --name laptop"""
+"""Admin commands. python -m callsight.admin create-key --org acme --name laptop
+
+`demo` creates a 'demo' organization with a key and six example calls, for a first look."""
 
 from __future__ import annotations
 
 import argparse
 import sys
 
+from importlib.resources import files
+
 from . import store
 from .auth import create_key, revoke_key
 from .config import Settings
 from .migrate import migrate
+from .service import analyze_text_with_transcript
+
+DEMO_COMPETITORS = ("AcmeCall", "Gong", "Chorus")
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -20,6 +27,7 @@ def main(argv: list[str] | None = None) -> int:
         p.add_argument("--name", required=True, help="a label for the key, e.g. the person or system using it")
     w = sub.add_parser("webhook-secret", help="print an org's webhook secret and URL path")
     w.add_argument("--org", default="default")
+    sub.add_parser("demo", help="create a 'demo' org with a key and six example calls")
     args = parser.parse_args(argv)
 
     settings = Settings.from_env()
@@ -35,12 +43,34 @@ def main(argv: list[str] | None = None) -> int:
             n = revoke_key(conn, args.org, args.name)
             print(f"revoked {n} key(s)")
             return 0 if n else 1
+        elif args.command == "demo":
+            return _demo(conn, settings)
         else:
             row = conn.execute("SELECT id, webhook_secret FROM orgs WHERE name = %s", (args.org,)).fetchone()
             if not row:
                 print(f"no org named {args.org!r}", file=sys.stderr)
                 return 1
             print(f"secret: {row['webhook_secret']}\npath:   /v1/orgs/{row['id']}/connectors/generic/webhook")
+    return 0
+
+
+def _demo(conn, settings: Settings) -> int:
+    key = create_key(conn, "demo", "demo")
+    org_id = conn.execute("SELECT id FROM orgs WHERE name = 'demo'").fetchone()["id"]
+    have = {r["external_id"] for r in conn.execute("SELECT external_id FROM calls WHERE org_id = %s", (org_id,))}
+    loaded = 0
+    for f in sorted(files("callsight.demo").iterdir(), key=lambda f: f.name):
+        name = f.name.removesuffix(".txt")
+        if not f.name.endswith(".txt") or name in have:  # running demo twice does not duplicate calls
+            continue
+        transcript, report = analyze_text_with_transcript(
+            f.read_text(encoding="utf-8"), call_id=name, settings=settings, extra_competitors=DEMO_COMPETITORS
+        )
+        store.save_call(conn, org_id, transcript, report, source="demo")
+        loaded += 1
+    print(f"Loaded {loaded} example call(s) into the 'demo' organization.")
+    print(f"API key: {key}")
+    print("Open http://localhost:8000 and paste the key. (Shown once; run demo again for a new key.)")
     return 0
 
 
