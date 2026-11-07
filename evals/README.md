@@ -58,6 +58,27 @@ whether a next step was really agreed; the rules are better at rep commitments a
 competitor names. That suggests a hybrid (rules for `competitor_mention` and `action_item`, the
 model for objections and next steps), not a replacement.
 
+### The hybrid (default when an LLM is configured)
+
+`pipeline.DEFAULT_LLM_ANALYZERS`: rules for talk ratio, competitors and commitments; `llm_insights`
+(which no longer extracts commitments) for objections and the next step. Same model and calls:
+
+| Kind | Rules | LLM only | Hybrid |
+|---|---|---|---|
+| pricing_objection | 67% / 40% | 75% / 60% | **100% / 80%** |
+| timing_objection | 33% / 25% | 67% / 50% | 67% / 50% |
+| authority_objection | – / 0% | 100% / 100% | – / 0% |
+| need_objection | – / 0% | 25% / 50% | 33% / 50% |
+| competitor_mention | 100% / 100% | – | **100% / 100%** |
+| action_item | 89% / 89% | 38% / 67% | **89% / 89%** |
+| no_next_step | 43% / 75% | 100% / 100% | 57% / 100% |
+
+The hybrid keeps the rules' strengths and adds the model's objection recall. Note the
+authority and next-step rows: the logic for them did not change, yet removing commitments from
+the prompt shifted the 3B model's answers on them. With one authority label and ten calls that
+is within noise, which is the main limit of this seed set. Small prompt changes move small
+models, so rerun the eval after every prompt change.
+
 **Prompt finding:** the first prompt contained a JSON example with concrete values
 (`"line": 3`, `"next_step_agreed": false`). The 3B model copied them: it reported a pricing
 objection on line 3 in 7 of 10 calls and "no next step" on every call (pricing precision 22%).

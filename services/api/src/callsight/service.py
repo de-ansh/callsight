@@ -6,7 +6,7 @@ from typing import Sequence
 
 from .config import Settings
 from .models import CallReport, Transcript
-from .pipeline import DEFAULT_ANALYZERS, analyze, build_analyzers
+from .pipeline import DEFAULT_ANALYZERS, DEFAULT_LLM_ANALYZERS, analyze, build_analyzers
 from .registry import create, load_builtins
 
 
@@ -49,6 +49,7 @@ def analyze_transcript(
     if settings.llm_provider != "none":
         llm = create("llm", settings.llm_provider, base_url=settings.ollama_url, model=settings.ollama_model)
     analyzers = build_analyzers(
-        settings.analyzers or DEFAULT_ANALYZERS, competitors=competitors, rep_names=settings.rep_names, llm=llm
+        settings.analyzers or (DEFAULT_LLM_ANALYZERS if llm else DEFAULT_ANALYZERS),
+        competitors=competitors, rep_names=settings.rep_names, llm=llm,
     )
     return analyze(transcript, analyzers, llm)

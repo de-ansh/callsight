@@ -39,12 +39,12 @@ def run(answer):
 def test_valid_answer_becomes_cited_insights():
     insights, llm = run({
         "objections": [{"type": "pricing", "line": 1}],
-        "commitments": [{"line": 2, "text": "send a smaller quote"}],
+        "commitments": [{"line": 2, "text": "ignored: commitments come from the rules"}],
         "next_step_agreed": True, "next_step_line": 3,
         "sentiment_shifts": [{"line": 3, "direction": "positive", "note": "agrees to meet"}],
     })
     assert [(i.kind, [e.segment_id for e in i.evidence]) for i in insights] == [
-        ("pricing_objection", [1]), ("action_item", [2]), ("next_step", [3]), ("sentiment_shift", [3]),
+        ("pricing_objection", [1]), ("next_step", [3]), ("sentiment_shift", [3]),
     ]
     prompt, json_mode = llm.prompts[0]
     assert json_mode and '"Alex"' in prompt and "[1] Priya: That's more than we can spend." in prompt
@@ -59,7 +59,6 @@ def test_answers_that_do_not_match_the_transcript_are_dropped():
             {"type": "timing", "line": "1"},      # line must be an int
             "garbage",
         ],
-        "commitments": [{"line": 1, "text": "prospect line, not a rep commitment"}, {"line": True}],
         "next_step_agreed": True, "next_step_line": 42,  # agreed but uncited: no claim either way
         "sentiment_shifts": [{"line": 1, "direction": "sideways"}],
     })
@@ -115,3 +114,18 @@ def test_baseline_scores_are_stable():
     assert (s["pricing_objection"].tp, s["pricing_objection"].fp, s["pricing_objection"].fn) == (2, 1, 3)
     assert (s["competitor_mention"].tp, s["competitor_mention"].fp, s["competitor_mention"].fn) == (3, 0, 0)
     assert (s["no_next_step"].tp, s["no_next_step"].fp, s["no_next_step"].fn) == (3, 4, 1)
+
+
+def test_hybrid_is_the_default_when_an_llm_is_configured(monkeypatch):
+    """With an LLM: rules for talk ratio, competitors and commitments; the model for objections and next steps."""
+    from callsight import service
+    from callsight.pipeline import DEFAULT_ANALYZERS, DEFAULT_LLM_ANALYZERS
+
+    seen = {}
+    monkeypatch.setattr(service, "create", lambda kind, name, **kw: FakeLLM({"next_step_agreed": False}))
+    monkeypatch.setattr(service, "build_analyzers", lambda names, **kw: seen.setdefault("names", names) and [])
+    service.analyze_transcript(CALL, settings=Settings(llm_provider="ollama"))
+    assert seen["names"] == DEFAULT_LLM_ANALYZERS and "llm_insights" in DEFAULT_LLM_ANALYZERS
+    seen.clear()
+    service.analyze_transcript(CALL, settings=Settings())
+    assert seen["names"] == DEFAULT_ANALYZERS and "llm_insights" not in DEFAULT_ANALYZERS
