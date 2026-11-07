@@ -1,4 +1,4 @@
-"""Round-trip through Postgres. Runs only when CALLSIGHT_TEST_DATABASE_URL points at a db with db/schema.sql loaded."""
+"""Round-trip through Postgres. Runs only when CALLSIGHT_TEST_DATABASE_URL is set (conftest.py migrates it)."""
 
 import os
 import uuid
@@ -48,3 +48,14 @@ def test_analyze_persists_and_reads_back():
 def test_unknown_call_is_404_and_bad_id_is_422():
     assert client.get(f"/v1/calls/{uuid.uuid4()}").status_code == 404
     assert client.get("/v1/calls/not-a-uuid").status_code == 422
+
+
+def test_migrations_are_recorded_and_idempotent():
+    import psycopg
+
+    from callsight.migrate import migrate, pending_files
+
+    assert migrate(DB_URL) == []  # conftest already applied everything
+    with psycopg.connect(DB_URL) as conn:
+        recorded = [r[0] for r in conn.execute("SELECT version FROM schema_migrations ORDER BY version")]
+    assert recorded == [v for v, _ in pending_files()]

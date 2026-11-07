@@ -1,5 +1,5 @@
--- Schema. Mounted into Postgres on first start only (docker-entrypoint-initdb.d).
--- shortcut: no migrations tool; edits here need `docker compose down -v` to apply. Add one before the first real deploy.
+-- Initial schema. Applied by callsight.migrate on API/worker startup.
+-- Never edit an applied migration: add a new numbered file instead.
 
 CREATE EXTENSION IF NOT EXISTS vector;  -- reserved for semantic search over transcripts
 

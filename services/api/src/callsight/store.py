@@ -1,4 +1,4 @@
-"""Postgres persistence for analyzed calls (schema: db/schema.sql). Requires psycopg."""
+"""Postgres persistence for analyzed calls (schema: callsight/migrations). Requires psycopg."""
 
 from __future__ import annotations
 

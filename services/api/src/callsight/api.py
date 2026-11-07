@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from contextlib import asynccontextmanager
 from pathlib import PurePath
 from uuid import UUID, uuid4
 
@@ -10,9 +11,19 @@ from pydantic import BaseModel, Field
 
 from . import __version__, recordings, store
 from .config import Settings
+from .migrate import migrate
 from .service import analyze_text_with_transcript
 
-app = FastAPI(title="Callsight", version=__version__)
+
+@asynccontextmanager
+async def lifespan(_app: FastAPI):
+    settings = Settings.from_env()
+    if settings.database_url:
+        migrate(settings.database_url)
+    yield
+
+
+app = FastAPI(title="Callsight", version=__version__, lifespan=lifespan)
 
 AUDIO_TYPES = {
     ".wav": "audio/wav", ".mp3": "audio/mpeg", ".m4a": "audio/mp4", ".ogg": "audio/ogg",
