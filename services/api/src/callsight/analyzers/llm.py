@@ -1,9 +1,12 @@
-"""LLM-powered analyzer: objection types, rep commitments, next step, sentiment shifts.
+"""LLM-powered analyzer: objection types, agreed next step, sentiment shifts.
+
+Rep commitments are left to the rule-based action_items analyzer, which measured better
+(evals/README.md).
 
 The model sees numbered transcript lines and must cite line numbers. Its answer is treated
-as untrusted: citations to lines that don't exist, objections attributed to the rep, and
-commitments attributed to the prospect are dropped, so every insight still points at real
-evidence. Enable with CALLSIGHT_LLM_PROVIDER=ollama and CALLSIGHT_ANALYZERS=...,llm_insights.
+as untrusted: citations to lines that don't exist and objections attributed to the rep are
+dropped, so every insight still points at real evidence. Setting CALLSIGHT_LLM_PROVIDER=ollama
+turns it on as part of pipeline.DEFAULT_LLM_ANALYZERS.
 """
 
 from __future__ import annotations
@@ -40,13 +43,11 @@ Read the whole transcript, then report only what is actually said in it:
   pricing (cost, budget, discounts), timing (not now, later, delays), authority (needs approval
   from someone else), need (doubts they need it or see the value). Do NOT count statements that
   something is NOT a concern, or a polite "no thanks" answering "anything else?".
-- commitments: concrete things the REP promises to do (send, schedule, prepare). Not figures of speech.
 - next_step_agreed: true only if both sides agreed a concrete next meeting or action with a time.
 - sentiment_shifts: lines where the prospect's attitude clearly turns positive or negative.
 
 Answer with one JSON object with exactly these keys:
 - "objections": list of objects with "type" (pricing, timing, authority or need) and "line" (the line number)
-- "commitments": list of objects with "line" and "text" (a few words)
 - "next_step_agreed": true or false
 - "next_step_line": the line number where the next step was agreed, or null
 - "sentiment_shifts": list of objects with "line", "direction" (positive or negative) and "note"
@@ -103,12 +104,6 @@ class LLMInsightAnalyzer(_Base):
                 kind=f"{kind}_objection", title=OBJECTION_TYPES[kind], severity="medium",
                 evidence=[_evidence(by_id[i]) for i in sorted(lines)],
             ))
-
-        for item in data.get("commitments") or []:
-            seg = by_id.get(_int(item.get("line"))) if isinstance(item, dict) else None
-            if seg and seg.speaker == rep:
-                text = str(item.get("text") or seg.text).strip()[:160]
-                insights.append(Insight(kind="action_item", title=text, evidence=[_evidence(seg)]))
 
         agreed = data.get("next_step_agreed") is True
         seg = by_id.get(_int(data.get("next_step_line")))

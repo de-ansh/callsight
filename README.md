@@ -145,7 +145,8 @@ class MyCheck:
         ...
 ```
 
-Add it to `DEFAULT_ANALYZERS` in `pipeline.py` (configurable selection is on the roadmap).
+Turn it on with `CALLSIGHT_ANALYZERS=talk_ratio,objections,competitors,next_step,action_items,my_check`,
+or add it to `DEFAULT_ANALYZERS` in `pipeline.py`.
 
 ## Known limitations
 

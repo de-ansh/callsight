@@ -27,7 +27,7 @@ class Settings:
     s3_bucket: str = "recordings"
     s3_secure: bool = False  # True for https endpoints
     secret_key: str = ""  # signs short-lived recording links; set it when running more than one API process
-    analyzers: tuple[str, ...] = ()  # empty = pipeline.DEFAULT_ANALYZERS
+    analyzers: tuple[str, ...] = ()  # empty = pipeline.DEFAULT_ANALYZERS (or DEFAULT_LLM_ANALYZERS with an LLM)
     whisper_model: str = "small"  # faster-whisper size: tiny, base, small, medium, large-v3
 
     @classmethod

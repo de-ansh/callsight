@@ -106,7 +106,15 @@ class ObjectionAnalyzer(_Base):
                         evidence=[_evidence(s) for s in hits[:MAX_EVIDENCE]],
                     )
                 )
+        return insights
 
+
+@register("analyzer", "competitors")
+class CompetitorAnalyzer(_Base):
+    name = "competitors"
+
+    def analyze(self, transcript: Transcript) -> list[Insight]:
+        insights: list[Insight] = []
         for competitor in self.competitors:
             pattern = _name_pattern(competitor)
             hits = [s for s in transcript.segments if pattern.search(s.text)]

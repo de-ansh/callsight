@@ -87,7 +87,7 @@ def test_pricing_objection_only_counts_prospect_speech():
 
 def test_competitor_mention_is_case_insensitive_and_cited():
     t = parse("[00:00] Alex: Hi\n[00:10] Priya: We also looked at acmecall.")
-    report = analyze(t, build_analyzers(["objections"], competitors=("AcmeCall",)))
+    report = analyze(t, build_analyzers(["competitors"], competitors=("AcmeCall",)))
     insight = next(i for i in report.insights if i.kind == "competitor_mention")
     assert insight.title == "Competitor mentioned: AcmeCall"
     assert insight.evidence[0].segment_id == 1
@@ -172,7 +172,7 @@ def test_insights_sorted_by_severity():
 
 
 def test_registry_lists_builtins_and_rejects_unknown():
-    assert {"talk_ratio", "objections", "next_step", "action_items"} <= set(available("analyzer"))
+    assert {"talk_ratio", "objections", "competitors", "next_step", "action_items"} <= set(available("analyzer"))
     assert "text" in available("asr") and "ollama" in available("llm")
     with pytest.raises(KeyError):
         create("analyzer", "does_not_exist")
@@ -196,6 +196,6 @@ def test_sample_call_end_to_end():
 
 def test_competitor_matches_speech_to_text_spacing():
     t = parse("[00:00] Alex: Hi\n[00:05] Priya: The quote from ACME call was lower.\n[00:09] Priya: Acme calling back?")
-    report = analyze(t, build_analyzers(["objections"], competitors=("AcmeCall",)))
+    report = analyze(t, build_analyzers(["competitors"], competitors=("AcmeCall",)))
     insight = next(i for i in report.insights if i.kind == "competitor_mention")
     assert [e.segment_id for e in insight.evidence] == [1]  # "Acme calling" is not a mention
