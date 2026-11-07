@@ -41,6 +41,10 @@ def upload_file(settings: Settings, key: str, path: str, content_type: str) -> N
     s3.fput_object(settings.s3_bucket, key, path, content_type=content_type)
 
 
+def remove(settings: Settings, key: str) -> None:
+    client(settings).remove_object(settings.s3_bucket, key)  # S3 deletes are idempotent
+
+
 def size(settings: Settings, key: str) -> int:
     return client(settings).stat_object(settings.s3_bucket, key).size
 
