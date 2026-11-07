@@ -21,6 +21,12 @@ class Settings:
     competitors: tuple[str, ...] = ()
     rep_names: tuple[str, ...] = ()
     database_url: str = ""
+    s3_endpoint: str = ""  # host:port of MinIO / S3; empty = audio upload disabled
+    s3_access_key: str = ""
+    s3_secret_key: str = ""
+    s3_bucket: str = "recordings"
+    s3_secure: bool = False  # True for https endpoints
+    whisper_model: str = "small"  # faster-whisper size: tiny, base, small, medium, large-v3
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings":
@@ -32,4 +38,10 @@ class Settings:
             competitors=_csv(env.get("CALLSIGHT_COMPETITORS")),
             rep_names=_csv(env.get("CALLSIGHT_REP_NAMES")),
             database_url=env.get("CALLSIGHT_DATABASE_URL", ""),
+            s3_endpoint=env.get("CALLSIGHT_S3_ENDPOINT", ""),
+            s3_access_key=env.get("CALLSIGHT_S3_ACCESS_KEY", ""),
+            s3_secret_key=env.get("CALLSIGHT_S3_SECRET_KEY", ""),
+            s3_bucket=env.get("CALLSIGHT_S3_BUCKET", cls.s3_bucket),
+            s3_secure=env.get("CALLSIGHT_S3_SECURE", "").strip().lower() in ("1", "true", "yes"),
+            whisper_model=env.get("CALLSIGHT_WHISPER_MODEL", cls.whisper_model),
         )
