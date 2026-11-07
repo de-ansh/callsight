@@ -1,0 +1,10 @@
+# Pricing objection as a discount ask; the rep says "price" too (rep lines are never objections).
+# no_next_step: false
+[00:00] Leo: So for 25 seats the price comes to 18,000 a year.
+[00:06] Grace: Hmm. Is there any discount if we sign before the end of the month? {pricing_objection}
+[00:12] Leo: I can do ten percent for an annual commitment signed this month.
+[00:18] Grace: That helps, but it's still over what I have. Could we start with 15 seats? {pricing_objection}
+[00:26] Leo: Yes. I'll send a revised quote for 15 seats with the discount today. {action_item}
+[00:33] Grace: Great. If the quote works, I'll sign Monday.
+[00:38] Leo: Perfect, let's touch base Monday morning to finalize.
+[00:43] Grace: Sounds good.

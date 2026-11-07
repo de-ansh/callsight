@@ -1,0 +1,11 @@
+# Objections phrased without the baseline's keywords; authority objection.
+# no_next_step: true
+[00:00] Sam: Thanks for making time, Lena. Where did you land after the trial?
+[00:07] Lena: The team liked it. But that's more than we can spend this year, to be honest. {pricing_objection}
+[00:16] Sam: I hear you. If we started with a smaller team, would that change things?
+[00:24] Lena: Maybe. Either way, I'd need to run this by my VP before anything moves. {authority_objection}
+[00:33] Sam: Makes sense. What would your VP want to see?
+[00:39] Lena: Probably proof it pays for itself. And realistically we won't look at new tools until the spring. {timing_objection}
+[00:50] Sam: Understood. I can put together an ROI summary. {action_item}
+[00:56] Lena: Sure, if you want.
+[01:00] Sam: Thanks Lena.

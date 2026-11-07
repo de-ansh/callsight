@@ -20,7 +20,9 @@ class LLM(Protocol):
 
     name: str
 
-    def complete(self, prompt: str) -> str: ...
+    def complete(self, prompt: str, *, json_mode: bool = False) -> str:
+        """json_mode asks the model for a single JSON object (callers still validate it)."""
+        ...
 
 
 class Analyzer(Protocol):

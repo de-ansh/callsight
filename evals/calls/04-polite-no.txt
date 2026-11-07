@@ -1,0 +1,9 @@
+# A polite close with no objection; "not right now" answers "anything else?".
+# no_next_step: false
+[00:00] Raj: Hi Emma, thanks for the quick call. Just confirming the rollout plan for your team.
+[00:08] Emma: Yes, we're ready. The contract is signed and IT has approved the integration.
+[00:16] Raj: Great. Training is set for Monday at 9, and I'll send the login details on Friday. {action_item}
+[00:25] Emma: Perfect, the team has it on their calendars.
+[00:30] Raj: Anything else I can help with?
+[00:33] Emma: Not right now, thanks. We're all set.
+[00:37] Raj: Great, see you Monday.

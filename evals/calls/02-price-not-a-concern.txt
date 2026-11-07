@@ -1,0 +1,12 @@
+# Price is mentioned but explicitly not a concern; next step booked without keywords.
+# no_next_step: false
+[00:00] Dana: Hi Marcus, good to see you again. Last time you mentioned onboarding was the big worry.
+[00:09] Marcus: Right. Honestly price isn't really the issue for us, the budget is approved. What I care about is how fast my team can get started.
+[00:24] Dana: Most teams are live within two weeks. We assign an onboarding manager on day one.
+[00:35] Marcus: Two weeks works. Who on my side needs to be involved?
+[00:41] Dana: Just your sales ops lead and one admin for the CRM connection.
+[00:50] Marcus: That's easy, that would be Priyanka.
+[00:56] Dana: Perfect. How about Thursday at 10 with Priyanka to kick things off?
+[01:03] Marcus: Thursday at 10 is good, put it in.
+[01:07] Dana: Done. I'll send the invite with an agenda this afternoon. {action_item}
+[01:12] Marcus: Great, talk then.

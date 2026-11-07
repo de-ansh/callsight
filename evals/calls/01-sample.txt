@@ -1,0 +1,14 @@
+# The README sample call.
+# competitors: AcmeCall
+# no_next_step: true
+[00:00] Alex: Thanks for joining, Priya. I wanted to walk you through how our platform works and what teams like yours get out of it.
+[00:14] Priya: Sure, we're evaluating a few options right now.
+[00:21] Alex: Great. So the platform records every call, transcribes it, and surfaces coaching moments automatically. We also have dashboards, forecasting, a mobile app, and integrations with most CRMs. Teams usually see ramp time drop significantly once reps get feedback on every conversation.
+[00:58] Priya: That sounds interesting. Honestly our budget for this is tight, and the pricing we saw from AcmeCall was lower. {pricing_objection} {competitor_mention}
+[01:10] Alex: Understood. I'll send over a detailed pricing breakdown after this call. {action_item}
+[01:18] Priya: OK. We're also not sure this is a priority until next quarter. {timing_objection}
+[01:26] Alex: That's fair. Let me tell you a little more about our security model, since that often matters for larger teams. We're SOC 2 compliant and offer single sign-on, role-based access, and regional data hosting for customers with residency requirements.
+[01:50] Priya: Okay.
+[01:53] Alex: Anything else I can answer?
+[01:58] Priya: Not right now, thanks.
+[02:01] Alex: Great, thanks for your time.

@@ -1,1 +1,1 @@
-from . import baseline  # noqa: F401  (import registers the analyzers)
+from . import baseline, llm  # noqa: F401  (imports register the analyzers)
