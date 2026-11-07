@@ -30,7 +30,9 @@ pain still need to be checked before building past week 2 of the roadmap.*
 | Postgres persistence (calls, segments, insights with evidence) when `CALLSIGHT_DATABASE_URL` is set | Working, tested against Postgres 16 (`CALLSIGHT_TEST_DATABASE_URL=... pytest`) |
 | Audio: `POST /v1/calls/upload` → MinIO → background worker (faster-whisper, speakers split by stereo channel) → stored report | Working, tested: full stack verified with a real 2-min stereo call (about 50 s to transcribe on CPU in Docker) |
 | `docker-compose.yml` (Postgres+pgvector, MinIO, API, worker, optional Ollama) | `db`, `minio`, `api` and `worker` built and run. MinIO is Chainguard's build (`minio/minio` is no longer published), pinned by digest |
-| Mono-recording speaker separation, connectors, UI, auth | Not started |
+| Web UI at `/`: upload, paste, call list, transcript with click-to-jump evidence and audio seek | Working; checked in headless Chrome against real calls |
+| Webhook connector (`POST /v1/connectors/generic/webhook`, HMAC-signed; transcript or https recording URL) | Working, tested (SSRF guard, signatures, worker fetch) |
+| Mono-recording speaker separation, telephony/meeting connectors, auth | Not started |
 
 ## Try it (no dependencies beyond Python 3.10+)
 
@@ -61,10 +63,28 @@ docker compose up --build     # API on http://localhost:8000
 docker compose --profile local-llm up   # also start Ollama (set CALLSIGHT_LLM_PROVIDER=ollama)
 ```
 
+Open http://localhost:8000 to upload recordings, paste transcripts and browse calls.
+Clicking an insight's quote jumps to that line and plays the recording from there.
+
 ```bash
 curl -s localhost:8000/v1/analyze -H 'content-type: application/json' \
   -d '{"call_id":"demo","transcript":"[00:00] Alex: Hi\n[00:10] Priya: The price is too expensive."}'
 ```
+
+### Sending calls from another system (webhook)
+
+Set `CALLSIGHT_WEBHOOK_SECRET`, then POST JSON signed with HMAC-SHA256 of the raw body:
+
+```bash
+BODY='{"call_id":"crm-123","recording_url":"https://files.example.com/calls/123.mp3"}'
+SIG=$(printf %s "$BODY" | openssl dgst -sha256 -hmac "$CALLSIGHT_WEBHOOK_SECRET" | sed 's/^.* //')
+curl -s localhost:8000/v1/connectors/generic/webhook -H "X-Callsight-Signature: sha256=$SIG" -d "$BODY"
+```
+
+Send `transcript` instead of `recording_url` to analyze text right away. Recording URLs must
+be https and must resolve to public addresses; the worker downloads them into storage.
+New connectors implement `parse(body, headers)` and register under kind `connector`
+(see `callsight/connectors.py`).
 
 ## How it is organised
 

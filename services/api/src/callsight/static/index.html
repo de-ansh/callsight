@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Callsight</title>
+<style>
+  :root {
+    --bg: #f7f7f5; --panel: #ffffff; --text: #1d1d1b; --muted: #6b6b66; --line: #e3e2dc;
+    --accent: #2f5bd3; --on-accent: #ffffff; --accent-soft: #e6ecfb; --high: #b42318; --medium: #a15c07; --low: #3f6212;
+    --info: #475467; --mark: #fff3c4;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #151514; --panel: #1f1f1d; --text: #ecebe6; --muted: #a3a29b; --line: #34332f;
+      --accent: #8aa8ff; --on-accent: #10172e; --accent-soft: #263152; --high: #ff8a80; --medium: #f5b955; --low: #a3d97a;
+      --info: #b8c0cc; --mark: #4a3f10;
+    }
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+  header { display: flex; align-items: center; gap: 16px; padding: 12px 20px;
+           border-bottom: 1px solid var(--line); background: var(--panel); }
+  header a { color: var(--text); text-decoration: none; font-weight: 650; font-size: 17px; }
+  main { max-width: 1100px; margin: 0 auto; padding: 20px 16px 60px; }
+  h2 { font-size: 16px; margin: 24px 0 10px; }
+  .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 8px; padding: 16px; }
+  .grid2 { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+  @media (max-width: 760px) { .grid2 { grid-template-columns: 1fr; } }
+  label { display: block; font-size: 13px; color: var(--muted); margin: 8px 0 4px; }
+  input[type=text], textarea { width: 100%; padding: 8px; border: 1px solid var(--line); border-radius: 6px;
+    background: var(--bg); color: var(--text); font: inherit; }
+  textarea { min-height: 110px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
+  button { font: inherit; cursor: pointer; border-radius: 6px; }
+  .primary { margin-top: 10px; padding: 7px 14px; border: 0; background: var(--accent); color: var(--on-accent); }
+  .primary:disabled { opacity: .5; cursor: default; }
+  .msg { font-size: 13px; margin-top: 8px; min-height: 1.2em; }
+  .error { color: var(--high); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 8px 10px; border-bottom: 1px solid var(--line); font-size: 14px; }
+  th { color: var(--muted); font-weight: 500; font-size: 13px; }
+  tbody tr:hover { background: var(--accent-soft); }
+  td a { color: var(--accent); }
+  .badge { display: inline-block; padding: 1px 8px; border-radius: 999px; font-size: 12px;
+           border: 1px solid currentColor; }
+  .s-high { color: var(--high); } .s-medium { color: var(--medium); }
+  .s-low { color: var(--low); } .s-info { color: var(--info); }
+  .st-done { color: var(--low); } .st-failed { color: var(--high); }
+  .st-queued, .st-processing { color: var(--medium); }
+  .detail { display: grid; grid-template-columns: minmax(0, 5fr) minmax(0, 6fr); gap: 16px; align-items: start; }
+  @media (max-width: 860px) { .detail { grid-template-columns: 1fr; } }
+  .insight { padding: 10px 0; border-bottom: 1px solid var(--line); }
+  .insight:last-child { border-bottom: 0; }
+  .insight .title { font-weight: 600; }
+  .insight .why { color: var(--muted); font-size: 13px; }
+  .ev { display: block; width: 100%; text-align: left; margin-top: 6px; padding: 6px 8px;
+        border: 1px solid var(--line); background: var(--bg); color: var(--text); font-size: 13px; }
+  .ev:hover, .ev:focus-visible { border-color: var(--accent); outline: none; }
+  .ts { font-family: ui-monospace, Menlo, monospace; color: var(--accent); font-size: 12px; }
+  .transcript { max-height: 70vh; overflow-y: auto; }
+  .seg { display: flex; gap: 10px; padding: 6px 8px; border-radius: 6px; }
+  .seg.hit { background: var(--mark); }
+  .seg button.ts { border: 0; background: none; padding: 0; min-width: 44px; text-align: left; }
+  .speaker { font-weight: 600; margin-right: 4px; }
+  audio { width: 100%; margin-bottom: 10px; }
+  .meta { color: var(--muted); font-size: 13px; }
+  .empty { color: var(--muted); padding: 20px 0; }
+</style>
+</head>
+<body>
+<header><a href="#/">Callsight</a><span class="meta" id="version"></span></header>
+<main id="app" aria-live="polite"></main>
+
+<script>
+"use strict";
+// All call data is untrusted (transcripts come from customers): only ever set it via textContent.
+const app = document.getElementById("app");
+let pollTimer = null;
+
+function el(tag, attrs = {}, ...children) {
+  const node = document.createElement(tag);
+  for (const [k, v] of Object.entries(attrs)) {
+    if (k === "class") node.className = v;
+    else if (k.startsWith("on")) node.addEventListener(k.slice(2), v);
+    else node.setAttribute(k, v);
+  }
+  for (const c of children) node.append(c instanceof Node ? c : document.createTextNode(String(c ?? "")));
+  return node;
+}
+
+function fmtTime(s) {
+  s = Math.floor(s || 0);
+  const h = Math.floor(s / 3600), m = Math.floor((s % 3600) / 60), sec = s % 60;
+  const mm = String(m).padStart(2, "0"), ss = String(sec).padStart(2, "0");
+  return h ? `${h}:${mm}:${ss}` : `${mm}:${ss}`;
+}
+
+async function api(path, options = {}) {
+  const res = await fetch(path, options);
+  const body = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
+  if (!res.ok) throw new Error(body?.detail ? (typeof body.detail === "string" ? body.detail : JSON.stringify(body.detail)) : `HTTP ${res.status}`);
+  return body;
+}
+
+function badge(text, cls) { return el("span", { class: `badge ${cls}` }, text); }
+
+// ---------------------------------------------------------------- list view
+async function showList() {
+  const audioMsg = el("div", { class: "msg" });
+  const textMsg = el("div", { class: "msg" });
+  const fileInput = el("input", { type: "file", id: "file", accept: ".wav,.mp3,.m4a,.ogg,.flac,.webm,.mp4" });
+  const audioId = el("input", { type: "text", id: "audio-id", placeholder: "e.g. acme-discovery-1" });
+  const textId = el("input", { type: "text", id: "text-id", placeholder: "e.g. acme-discovery-1" });
+  const transcript = el("textarea", { id: "transcript", placeholder: "[00:00] Alex: Thanks for joining\n[00:05] Priya: The price is too high" });
+
+  async function submit(button, msg, run) {
+    button.disabled = true; msg.className = "msg"; msg.textContent = "Working…";
+    try { msg.textContent = await run(); loadCalls(); }
+    catch (e) { msg.className = "msg error"; msg.textContent = e.message; }
+    finally { button.disabled = false; }
+  }
+  const uploadBtn = el("button", { class: "primary", type: "submit" }, "Upload recording");
+  const analyzeBtn = el("button", { class: "primary", type: "submit" }, "Analyze transcript");
+
+  const tbody = el("tbody");
+  const table = el("table", {}, el("thead", {}, el("tr", {},
+    el("th", {}, "Call"), el("th", {}, "Status"), el("th", {}, "Source"), el("th", {}, "Length"),
+    el("th", {}, "Insights"), el("th", {}, "Added"))), tbody);
+
+  app.replaceChildren(
+    el("div", { class: "grid2" },
+      el("form", { class: "panel", onsubmit: e => { e.preventDefault();
+          if (!fileInput.files[0]) { audioMsg.className = "msg error"; audioMsg.textContent = "Choose a file first."; return; }
+          submit(uploadBtn, audioMsg, async () => {
+            const form = new FormData();
+            form.append("file", fileInput.files[0]);
+            if (audioId.value.trim()) form.append("call_id", audioId.value.trim());
+            await api("/v1/calls/upload", { method: "POST", body: form });
+            fileInput.value = "";
+            return "Uploaded. Transcription runs in the background; the list updates by itself.";
+          }); } },
+        el("strong", {}, "Upload a recording"),
+        el("div", { class: "meta" }, "Stereo phone recordings get one speaker per channel."),
+        el("label", { for: "file" }, "Audio file"), fileInput,
+        el("label", { for: "audio-id" }, "Call name (optional)"), audioId,
+        uploadBtn, audioMsg),
+      el("form", { class: "panel", onsubmit: e => { e.preventDefault();
+          submit(analyzeBtn, textMsg, async () => {
+            const r = await api("/v1/analyze", { method: "POST", headers: { "content-type": "application/json" },
+              body: JSON.stringify({ call_id: textId.value.trim() || "pasted", transcript: transcript.value }) });
+            location.hash = `#/calls/${r.id}`;
+            return "Analyzed.";
+          }); } },
+        el("strong", {}, "Paste a transcript"),
+        el("div", { class: "meta" }, "One turn per line: [mm:ss] Speaker: text"),
+        el("label", { for: "text-id" }, "Call name (optional)"), textId,
+        el("label", { for: "transcript" }, "Transcript"), transcript,
+        analyzeBtn, textMsg)),
+    el("h2", {}, "Calls"),
+    el("div", { class: "panel" }, table));
+
+  async function loadCalls() {
+    clearTimeout(pollTimer);
+    let calls;
+    try { calls = await api("/v1/calls?limit=200"); }
+    catch (e) { tbody.replaceChildren(el("tr", {}, el("td", { colspan: 6, class: "error" }, e.message))); return; }
+    if (!calls.length) {
+      tbody.replaceChildren(el("tr", {}, el("td", { colspan: 6, class: "empty" }, "No calls yet. Upload a recording or paste a transcript.")));
+      return;
+    }
+    tbody.replaceChildren(...calls.map(c => el("tr", {},
+      el("td", {}, el("a", { href: `#/calls/${c.id}` }, c.external_id || c.id)),
+      el("td", {}, badge(c.status, `st-${c.status}`)),
+      el("td", {}, c.source),
+      el("td", {}, c.duration_s == null ? "–" : fmtTime(c.duration_s)),
+      el("td", {}, c.status === "done" ? c.insight_count : "–"),
+      el("td", { class: "meta" }, new Date(c.created_at).toLocaleString()))));
+    if (calls.some(c => c.status === "queued" || c.status === "processing")) pollTimer = setTimeout(loadCalls, 4000);
+  }
+  loadCalls();
+}
+
+// ---------------------------------------------------------------- detail view
+async function showCall(id) {
+  clearTimeout(pollTimer);
+  let call;
+  try { call = await api(`/v1/calls/${encodeURIComponent(id)}`); }
+  catch (e) { app.replaceChildren(el("p", { class: "error" }, e.message), el("a", { href: "#/" }, "Back to calls")); return; }
+
+  const head = el("div", {},
+    el("a", { href: "#/" }, "← Calls"),
+    el("h2", {}, call.call_id || call.id, " ", badge(call.status, `st-${call.status}`)),
+    el("div", { class: "meta" }, `${call.source} · ${call.duration_s == null ? "length unknown" : fmtTime(call.duration_s)} · added ${new Date(call.created_at).toLocaleString()}`));
+
+  if (call.status !== "done") {
+    const why = call.status === "failed" ? el("p", { class: "error" }, call.error || "Processing failed.")
+      : el("p", {}, "Waiting for the worker to transcribe and analyze this call. This page refreshes by itself.");
+    app.replaceChildren(head, el("div", { class: "panel" }, why));
+    if (call.status !== "failed") pollTimer = setTimeout(() => showCall(id), 4000);
+    return;
+  }
+
+  const audio = call.has_recording
+    ? el("audio", { controls: "", preload: "metadata", src: `/v1/calls/${call.id}/recording` }) : null;
+
+  const segRows = new Map();
+  const transcript = el("div", { class: "transcript", tabindex: "0", "aria-label": "Transcript" },
+    ...call.segments.map(s => {
+      const row = el("div", { class: "seg", id: `seg-${s.id}` },
+        el("button", { class: "ts", type: "button", title: "Play from here", onclick: () => jump(s.id, s.start_s) }, fmtTime(s.start_s)),
+        el("div", {}, el("span", { class: "speaker" }, `${s.speaker}:`), s.text));
+      segRows.set(s.id, row);
+      return row;
+    }));
+
+  function jump(segId, start) {
+    segRows.forEach(r => r.classList.remove("hit"));
+    const row = segRows.get(segId);
+    if (row) { row.classList.add("hit"); row.scrollIntoView({ block: "center", behavior: "smooth" }); }
+    if (audio && audio.isConnected) { audio.currentTime = start; audio.play().catch(() => {}); }
+  }
+
+  const talk = Object.entries(call.talk_share || {}).map(([who, share]) => `${who} ${Math.round(share * 100)}%`).join(" · ");
+  const insights = call.insights.length ? call.insights.map(i => el("div", { class: "insight" },
+      el("div", {}, badge(i.severity, `s-${i.severity}`), " ", el("span", { class: "title" }, i.title)),
+      i.detail ? el("div", { class: "why" }, i.detail) : "",
+      ...i.evidence.map(e => el("button", { class: "ev", type: "button", onclick: () => jump(e.segment_id, e.start_s),
+          "aria-label": `Jump to ${fmtTime(e.start_s)}, ${e.speaker}` },
+        el("span", { class: "ts" }, fmtTime(e.start_s)), " ", el("span", { class: "speaker" }, `${e.speaker}:`), `“${e.quote}”`))))
+    : [el("p", { class: "empty" }, "No insights for this call.")];
+
+  app.replaceChildren(head,
+    el("div", { class: "detail" },
+      el("section", { class: "panel", "aria-label": "Insights" },
+        el("p", {}, call.summary), el("p", { class: "meta" }, `Talk share: ${talk || "–"}`), ...insights),
+      el("section", { class: "panel" }, audio || "", transcript)));
+}
+
+// ---------------------------------------------------------------- router
+function route() {
+  const m = location.hash.match(/^#\/calls\/([^/]+)$/);
+  if (m) showCall(decodeURIComponent(m[1])); else showList();
+}
+window.addEventListener("hashchange", route);
+api("/health").then(h => { document.getElementById("version").textContent = `v${h.version}`; }).catch(() => {});
+route();
+</script>
+</body>
+</html>

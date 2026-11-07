@@ -47,6 +47,8 @@ services:
       CALLSIGHT_S3_ACCESS_KEY: ${MINIO_ROOT_USER:-callsight}
       CALLSIGHT_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:-callsight-dev-only}
       CALLSIGHT_WHISPER_MODEL: ${CALLSIGHT_WHISPER_MODEL:-small}
+      CALLSIGHT_WEBHOOK_SECRET: ${CALLSIGHT_WEBHOOK_SECRET:-}
+      CALLSIGHT_ANALYZERS: ${CALLSIGHT_ANALYZERS:-}
     depends_on: &callsight-deps
       db:
         condition: service_healthy

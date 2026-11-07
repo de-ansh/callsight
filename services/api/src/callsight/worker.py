@@ -10,8 +10,9 @@ import logging
 import tempfile
 import time
 from pathlib import PurePath
+from urllib.parse import urlsplit
 
-from . import recordings, store
+from . import recordings, remote, store
 from .config import Settings
 from .migrate import migrate
 from .registry import create, load_builtins
@@ -32,8 +33,11 @@ def process_one(settings: Settings, asr) -> bool:
     log.info("processing call %s", call_id)
     try:
         with tempfile.TemporaryDirectory() as tmp:
-            path = f"{tmp}/recording{PurePath(job['recording_key']).suffix}"
-            recordings.download(settings, job["recording_key"], path)
+            if job["recording_key"]:
+                path = f"{tmp}/recording{PurePath(job['recording_key']).suffix}"
+                recordings.download(settings, job["recording_key"], path)
+            else:  # handed over by a connector as a URL: fetch it into storage first
+                path = _fetch_into_storage(settings, call_id, job["recording_url"], tmp)
             transcript = asr.transcribe(path, job["external_id"])
         report = analyze_transcript(transcript, settings=settings)
         with store.connect(settings.database_url) as conn:
@@ -44,6 +48,19 @@ def process_one(settings: Settings, asr) -> bool:
         with store.connect(settings.database_url) as conn:
             store.fail_job(conn, call_id, f"{type(exc).__name__}: {exc}")
     return True
+
+
+def _fetch_into_storage(settings: Settings, call_id, url: str, tmp: str) -> str:
+    ext = PurePath(urlsplit(url).path).suffix.lower()
+    if ext not in recordings.AUDIO_TYPES:
+        raise ValueError(f"recording_url must end in one of {sorted(recordings.AUDIO_TYPES)}")
+    path = f"{tmp}/recording{ext}"
+    remote.fetch(url, path)
+    key = f"{call_id}/recording{ext}"
+    recordings.upload_file(settings, key, path, recordings.AUDIO_TYPES[ext])
+    with store.connect(settings.database_url) as conn:
+        store.set_recording_key(conn, call_id, key)  # retries and playback use the stored copy
+    return path
 
 
 def main() -> None:
