@@ -35,11 +35,16 @@ provisioned or planned but not yet connected.
 5. **Rule-based baseline first.** LLM analyzers will be measured against it on labelled
    transcripts before they replace it.
 
-## Data model (`db/schema.sql`)
+## Data model (`services/api/src/callsight/migrations/`)
 
 `calls` 1—n `segments` (ordered turns) and 1—n `insights` (kind, severity, title, detail,
 evidence as JSON). The pgvector extension is enabled for planned semantic search; no
 embedding column is defined yet because the dimension depends on the chosen model.
+
+Schema changes are numbered SQL files in that folder (`0001_initial.sql`, ...). The API and the
+worker apply any pending ones at startup, under a Postgres advisory lock, and record them in
+`schema_migrations`. Never edit an applied file; add the next number. Manual run:
+`python -m callsight.migrate`.
 
 ## Deployment
 

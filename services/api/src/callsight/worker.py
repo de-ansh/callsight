@@ -13,6 +13,7 @@ from pathlib import PurePath
 
 from . import recordings, store
 from .config import Settings
+from .migrate import migrate
 from .registry import create, load_builtins
 from .service import analyze_transcript
 
@@ -50,6 +51,7 @@ def main() -> None:
     settings = Settings.from_env()
     if not settings.database_url or not settings.s3_endpoint:
         raise SystemExit("worker needs CALLSIGHT_DATABASE_URL and CALLSIGHT_S3_ENDPOINT")
+    migrate(settings.database_url)
     load_builtins()
     log.info("loading whisper model '%s'", settings.whisper_model)
     asr = create("asr", "whisper", model=settings.whisper_model)

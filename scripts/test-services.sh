@@ -5,7 +5,6 @@
 #   scripts/test-services.sh down
 set -euo pipefail
 
-ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 PG_IMAGE="pgvector/pgvector:pg16"
 # Same digest as docker-compose.yml; bump both together.
 MINIO_IMAGE="cgr.dev/chainguard/minio@sha256:aea6c163749e1caca37f907976dcf337177ddf5f558808f2aa591618fd3a6eef"
@@ -15,13 +14,13 @@ S3_PORT=59000
 case "${1:-}" in
   up)
     docker run -d --rm --name callsight-testdb -p "$PG_PORT:5432" \
-      -e POSTGRES_PASSWORD=test -e POSTGRES_DB=callsight \
-      -v "$ROOT/db/schema.sql:/docker-entrypoint-initdb.d/001-schema.sql:ro" "$PG_IMAGE" >/dev/null
+      -e POSTGRES_PASSWORD=test -e POSTGRES_DB=callsight "$PG_IMAGE" >/dev/null
     docker run -d --rm --name callsight-testminio -p "$S3_PORT:9000" \
       -e MINIO_ROOT_USER=test -e MINIO_ROOT_PASSWORD=testtesttest "$MINIO_IMAGE" server /data >/dev/null
     for _ in $(seq 60); do
-      # The schema is applied after Postgres first reports ready, so wait for a table, not pg_isready.
-      if docker exec callsight-testdb psql -U postgres -d callsight -tAc "SELECT 1 FROM calls LIMIT 0" >/dev/null 2>&1 \
+      # The tests apply migrations themselves (tests/conftest.py); only wait for a real connection.
+      # -h forces TCP: the image's init phase briefly accepts socket connections before the real start.
+      if docker exec callsight-testdb psql -h 127.0.0.1 -U postgres -d callsight -tAc "SELECT 1" >/dev/null 2>&1 \
         && docker exec callsight-testminio mc ready local >/dev/null 2>&1; then
         echo "test services ready"
         exit 0
