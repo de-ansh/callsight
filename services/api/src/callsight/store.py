@@ -39,7 +39,7 @@ def _insert_results(conn: psycopg.Connection, call_id: UUID, transcript: Transcr
         )
 
 
-def save_call(conn: psycopg.Connection, transcript: Transcript, report: CallReport, source: str = "upload") -> UUID:
+def save_call(conn: psycopg.Connection, transcript: Transcript, report: CallReport, source: str = "text") -> UUID:
     """Insert the call, its segments and insights in one transaction; returns the new call id."""
     with conn.transaction():
         call_id = conn.execute(
@@ -51,13 +51,27 @@ def save_call(conn: psycopg.Connection, transcript: Transcript, report: CallRepo
     return call_id
 
 
-def create_queued_call(conn: psycopg.Connection, call_id: UUID, external_id: str, recording_key: str) -> None:
-    """Register an uploaded recording for the worker to process."""
+def create_queued_call(
+    conn: psycopg.Connection, call_id: UUID, external_id: str, recording_key: str | None = None,
+    recording_url: str | None = None, source: str = "audio",
+) -> None:
+    """Register a recording for the worker: already in storage (key) or to be fetched (url)."""
     with conn.transaction():
         conn.execute(
-            "INSERT INTO calls (id, external_id, source, status, recording_key) VALUES (%s, %s, 'audio', 'queued', %s)",
-            (call_id, external_id, recording_key),
+            "INSERT INTO calls (id, external_id, source, status, recording_key, recording_url)"
+            " VALUES (%s, %s, %s, 'queued', %s, %s)",
+            (call_id, external_id, source, recording_key, recording_url),
         )
+
+
+def set_recording_key(conn: psycopg.Connection, call_id: UUID, key: str) -> None:
+    with conn.transaction():
+        conn.execute("UPDATE calls SET recording_key = %s WHERE id = %s", (key, call_id))
+
+
+def recording_key(conn: psycopg.Connection, call_id: UUID) -> str | None:
+    row = conn.execute("SELECT recording_key FROM calls WHERE id = %s", (call_id,)).fetchone()
+    return row["recording_key"] if row else None
 
 
 def claim_job(conn: psycopg.Connection) -> dict[str, Any] | None:
@@ -69,7 +83,7 @@ def claim_job(conn: psycopg.Connection) -> dict[str, Any] | None:
             "   WHERE status = 'queued'"
             f"     OR (status = 'processing' AND claimed_at < now() - interval '{STALE_CLAIM}')"
             "   ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1)"
-            " RETURNING id, external_id, recording_key"
+            " RETURNING id, external_id, recording_key, recording_url"
         ).fetchone()
 
 
@@ -105,7 +119,8 @@ def list_calls(conn: psycopg.Connection, limit: int, offset: int) -> list[dict[s
 def get_call(conn: psycopg.Connection, call_id: UUID) -> dict[str, Any] | None:
     """The stored call in the same shape as CallReport.to_dict(), plus id, timestamps and segments."""
     call = conn.execute(
-        "SELECT id, external_id, source, status, error, duration_s, summary, talk_share, created_at"
+        "SELECT id, external_id, source, status, error, duration_s, summary, talk_share, created_at,"
+        " recording_key IS NOT NULL AS has_recording"
         " FROM calls WHERE id = %s",
         (call_id,),
     ).fetchone()
@@ -124,6 +139,7 @@ def get_call(conn: psycopg.Connection, call_id: UUID) -> dict[str, Any] | None:
         "source": call["source"],
         "status": call["status"],
         "error": call["error"],
+        "has_recording": call["has_recording"],
         "created_at": call["created_at"],
         "duration_s": call["duration_s"],
         "speakers": list(dict.fromkeys(s["speaker"] for s in segments)),

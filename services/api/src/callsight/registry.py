@@ -5,7 +5,7 @@ from __future__ import annotations
 import importlib
 from typing import Any, Callable
 
-KINDS = ("asr", "llm", "analyzer")
+KINDS = ("asr", "llm", "analyzer", "connector")
 _REGISTRY: dict[str, dict[str, Callable[..., Any]]] = {kind: {} for kind in KINDS}
 
 
@@ -34,5 +34,5 @@ def available(kind: str) -> list[str]:
 
 def load_builtins() -> None:
     """Import the built-in plugin packages so they register themselves."""
-    for module in ("callsight.analyzers", "callsight.providers"):
+    for module in ("callsight.analyzers", "callsight.providers", "callsight.connectors"):
         importlib.import_module(module)
