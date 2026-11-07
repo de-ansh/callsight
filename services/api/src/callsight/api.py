@@ -8,12 +8,17 @@ org's HMAC secret instead. Without a database, POST /v1/analyze is a stateless, 
 
 from __future__ import annotations
 
+import logging
 from contextlib import asynccontextmanager
+
+import anyio
+from minio.error import MinioException
+from urllib3.exceptions import HTTPError as Urllib3Error
 from pathlib import Path, PurePath
 from uuid import UUID, uuid4
 
 from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
 from . import __version__, auth, recordings, remote, retention, store
@@ -34,11 +39,63 @@ async def lifespan(_app: FastAPI):
     yield
 
 
-app = FastAPI(title="Callsight", version=__version__, lifespan=lifespan)
-
-# shortcut: checked after the body is received (spooled to disk); set a matching body limit in a
-# reverse proxy before exposing the API publicly.
 MAX_UPLOAD_BYTES = 500 * 1024 * 1024  # about 8 hours of 128 kbps mp3
+MAX_BODY_BYTES = 10 * 1024 * 1024  # every other request; a long call's transcript is well under 1 MB
+UPLOAD_PATH = "/v1/calls/upload"
+
+
+class BodySizeLimit:
+    """Reject oversized request bodies while they arrive, before they are spooled to disk:
+    by Content-Length when the client sends one, otherwise by counting bytes as they stream in."""
+
+    def __init__(self, app):
+        self.app = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] != "http":
+            return await self.app(scope, receive, send)
+        limit = MAX_UPLOAD_BYTES if scope["path"] == UPLOAD_PATH else MAX_BODY_BYTES
+        declared = dict(scope["headers"]).get(b"content-length", b"")
+        if declared.isdigit() and int(declared) > limit:
+            response = JSONResponse({"detail": f"Request body larger than {limit // 2**20} MB"}, status_code=413)
+            return await response(scope, receive, send)
+        if scope["path"] == UPLOAD_PATH:
+            # FastAPI parses the body before running dependencies, so without this an anonymous
+            # client could make the server read and spool a 500 MB upload before being rejected.
+            try:
+                override = app.dependency_overrides.get(require_key)  # tests stub auth this way
+                if override is not None:
+                    override()
+                else:
+                    await anyio.to_thread.run_sync(require_key, Request(scope))
+            except HTTPException as exc:
+                response = JSONResponse({"detail": exc.detail}, status_code=exc.status_code, headers=exc.headers)
+                return await response(scope, receive, send)
+        received = 0
+
+        async def counting_receive():
+            nonlocal received
+            message = await receive()
+            if message["type"] == "http.request":
+                received += len(message.get("body", b""))
+                if received > limit:  # FastAPI re-raises HTTPException from body parsing as-is
+                    raise HTTPException(status_code=413, detail=f"Request body larger than {limit // 2**20} MB")
+            return message
+
+        await self.app(scope, counting_receive, send)
+
+
+app = FastAPI(title="Callsight", version=__version__, lifespan=lifespan)
+app.add_middleware(BodySizeLimit)
+log = logging.getLogger("callsight.api")
+
+
+@app.exception_handler(MinioException)
+@app.exception_handler(Urllib3Error)
+async def storage_unavailable(_request: Request, exc: Exception) -> JSONResponse:
+    """Object storage down, full or misconfigured: a clear 503 instead of a stack trace."""
+    log.error("recording storage error: %s", exc)
+    return JSONResponse({"detail": "Recording storage is unavailable; try again later"}, status_code=503)
 _STATIC = Path(__file__).parent / "static"
 
 
