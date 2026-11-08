@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import re
 import hmac
 import logging
 import secrets
@@ -59,6 +60,49 @@ def principal_for_key(conn: psycopg.Connection, key: str) -> Principal | None:
         "SELECT org_id, name FROM api_keys WHERE key_hash = %s AND revoked_at IS NULL", (hash_key(key),)
     ).fetchone()
     return Principal(row["org_id"], f"key:{row['name']}") if row else None
+
+
+# --- single sign-on: email domain -> organization -----------------------------------------
+
+_DOMAIN = re.compile(r"^(?=.{1,253}$)([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$")
+
+
+def normalize_domain(domain: str) -> str:
+    domain = domain.strip().lower().lstrip("@")
+    if not _DOMAIN.match(domain):
+        raise ValueError(f"not a valid domain: {domain!r}")
+    return domain
+
+
+def allow_domain(conn: psycopg.Connection, org_name: str, domain: str) -> None:
+    """People who sign in with a verified email at `domain` join `org_name` (created if needed)."""
+    domain = normalize_domain(domain)
+    with conn.transaction():
+        conn.execute("INSERT INTO orgs (name) VALUES (%s) ON CONFLICT (name) DO NOTHING", (org_name,))
+        org_id = conn.execute("SELECT id FROM orgs WHERE name = %s", (org_name,)).fetchone()["id"]
+        conn.execute(
+            "INSERT INTO org_domains (domain, org_id) VALUES (%s, %s)"
+            " ON CONFLICT (domain) DO UPDATE SET org_id = EXCLUDED.org_id",
+            (domain, org_id),
+        )
+        conn.execute(
+            "INSERT INTO audit_log (org_id, actor, action, target) VALUES (%s, 'admin-cli', 'domain.allow', %s)",
+            (org_id, domain),
+        )
+
+
+def disallow_domain(conn: psycopg.Connection, domain: str) -> int:
+    with conn.transaction():
+        return conn.execute("DELETE FROM org_domains WHERE domain = %s", (normalize_domain(domain),)).rowcount
+
+
+def org_for_email(conn: psycopg.Connection, email: str) -> UUID | None:
+    """The organization a verified email belongs to, by its domain; None if the domain is not allowed."""
+    _, _, domain = email.strip().lower().rpartition("@")
+    if not domain:
+        return None
+    row = conn.execute("SELECT org_id FROM org_domains WHERE domain = %s", (domain,)).fetchone()
+    return row["org_id"] if row else None
 
 
 # --- signed recording links: an <audio> element cannot send an Authorization header ----------

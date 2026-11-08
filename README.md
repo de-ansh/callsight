@@ -90,6 +90,20 @@ curl -s localhost:8000/v1/analyze -H "Authorization: Bearer $KEY" -H 'content-ty
 
 ### Access control
 
+- **Single sign-on (OpenID Connect).** People sign in to the web UI with their company account
+  from any OIDC provider (Google Workspace, Microsoft Entra ID, Okta, Auth0, Keycloak, Authentik):
+  1. Register callsight with the provider. Redirect URI: `<CALLSIGHT_PUBLIC_URL>/auth/callback`;
+     scopes: `openid email profile`.
+  2. Set `CALLSIGHT_OIDC_ISSUER`, `CALLSIGHT_OIDC_CLIENT_ID`, `CALLSIGHT_OIDC_CLIENT_SECRET`,
+     `CALLSIGHT_PUBLIC_URL` and `CALLSIGHT_SECRET_KEY`.
+  3. Allow your email domain: `python -m callsight.admin allow-domain --org acme --domain acme.com`.
+
+  Only **verified** emails at an allowed domain get in. Some providers don't send
+  `email_verified` by default (check Microsoft Entra ID's optional claims); callsight refuses
+  those sign-ins until it is sent. Sessions last 8 hours in an HttpOnly, SameSite=Lax cookie
+  (Secure when `CALLSIGHT_PUBLIC_URL` is https, which it must be in production).
+  `disallow-domain` ends that domain's sessions immediately. API keys keep working for
+  scripts and integrations.
 - **Organizations and keys.** Every API key belongs to one organization and can only see and
   create that organization's calls; another org's call returns 404. Keys are stored as
   SHA-256 hashes and can be revoked: `python -m callsight.admin revoke-key --org acme --name alice`.

@@ -159,7 +159,8 @@
   </nav>
   <span class="spacer"></span>
   <span class="version" id="version"></span>
-  <button type="button" class="linklike" id="signout">Change API key</button>
+  <span class="version" id="whoami"></span>
+  <button type="button" class="linklike" id="signout" hidden>Sign out</button>
 </header>
 <main id="app" aria-live="polite"></main>
 
@@ -202,7 +203,8 @@ function setKey(k) { sessionKey = k; try { k ? localStorage.setItem(KEY_STORE, k
 class AuthError extends Error {}
 
 async function api(path, options = {}) {
-  const headers = { ...(options.headers || {}) };
+  // The CSRF header lets the server accept writes authenticated by the sign-in cookie.
+  const headers = { "x-callsight-csrf": "1", ...(options.headers || {}) };
   if (getKey()) headers.authorization = `Bearer ${getKey()}`;
   const res = await fetch(path, { ...options, headers });
   if (res.status === 401) throw new AuthError("Your API key is missing or no longer valid.");
@@ -228,21 +230,33 @@ function setNav(page) {
 function chip(sev, text) { return el("span", { class: `chip c-${sev}` }, text); }
 function statusTag(s) { return el("span", { class: `status st-${s}` }, s); }
 
-// ---------------------------------------------------------------- API key
-function showKeyForm(reason) {
+// ---------------------------------------------------------------- sign in
+let me = null;  // { actor } once signed in (by SSO session or API key)
+let ssoEnabled = false;
+
+async function showKeyForm(reason) {
   clearTimeout(pollTimer);
   setNav("");
+  me = null; updateIdentity();
+  try { ssoEnabled = (await (await fetch("/auth/config")).json()).sso; } catch { ssoEnabled = false; }
   const input = el("input", { type: "text", id: "apikey", autocomplete: "off", spellcheck: "false", placeholder: "cs_…" });
-  app.replaceChildren(el("form", { class: "panel narrow", style: "margin: 40px auto", onsubmit: e => {
-      e.preventDefault(); setKey(input.value.trim()); route(); } },
-    el("h1", {}, "Sign in with an API key"),
+  const keyForm = el("form", { onsubmit: e => { e.preventDefault(); setKey(input.value.trim()); route(); } },
+    el("label", { for: "apikey" }, ssoEnabled ? "Or use an API key" : "API key"), input,
+    el("p", { class: "help" }, "Ask your administrator for a key, or create one with ",
+      el("code", {}, "python -m callsight.admin create-key --org <name> --name <you>"), "."),
+    el("div", { style: "margin-top: 12px" }, el("button", { class: ssoEnabled ? "btn" : "btn primary", type: "submit" }, "Continue with key")));
+  app.replaceChildren(el("section", { class: "panel narrow", style: "margin: 40px auto" },
+    el("h1", { style: "margin-bottom: 12px" }, "Sign in to Callsight"),
     reason ? el("p", { class: "error" }, reason) : null,
-    el("p", { class: "meta" }, "Ask your administrator for a key, or create one with ",
-      el("code", {}, "python -m callsight.admin create-key --org <name> --name <you>"),
-      ". For a quick look, ", el("code", {}, "python -m callsight.admin demo"), " creates a demo workspace."),
-    el("label", { for: "apikey" }, "API key"), input,
-    el("div", { style: "margin-top: 14px" }, el("button", { class: "btn primary", type: "submit" }, "Continue"))));
-  input.focus();
+    ssoEnabled ? el("a", { class: "btn primary", href: "/auth/login", style: "display: inline-block" }, "Sign in with SSO") : null,
+    ssoEnabled ? el("p", { class: "help" }, "Use your company account. Your email domain must be enabled by an administrator.") : null,
+    keyForm));
+  if (!ssoEnabled) input.focus();
+}
+
+function updateIdentity() {
+  document.getElementById("whoami").textContent = me ? me.actor.replace(/^user:/, "").replace(/^key:/, "key: ") : "";
+  document.getElementById("signout").hidden = !me;
 }
 
 // ---------------------------------------------------------------- calls
@@ -540,8 +554,21 @@ async function showSettings() {
 }
 
 // ---------------------------------------------------------------- router
-function route() {
-  if (!getKey()) { showKeyForm(); return; }
+async function route() {
+  const signin = location.hash.match(/^#\/signin(?:\?error=(.*))?$/);
+  if (signin) {
+    history.replaceState(null, "", "#/");  // don't keep the error in the address bar
+    showKeyForm(signin[1] ? decodeURIComponent(signin[1]) : undefined);
+    return;
+  }
+  if (!me) {
+    try { me = await api("/auth/me"); updateIdentity(); }  // signed-in session or stored key
+    catch (e) {
+      if (e instanceof AuthError && !getKey()) showKeyForm();  // first visit: no error, just the sign-in page
+      else if (!handle(e)) app.replaceChildren(el("p", { class: "error" }, e.message));
+      return;
+    }
+  }
   const m = location.hash.match(/^#\/calls\/([^/]+)$/);
   if (m) showCall(decodeURIComponent(m[1]));
   else if (location.hash === "#/audit") showAudit();
@@ -549,7 +576,11 @@ function route() {
   else showCalls();
 }
 window.addEventListener("hashchange", route);
-document.getElementById("signout").addEventListener("click", () => { setKey(""); showKeyForm(); });
+document.getElementById("signout").addEventListener("click", async () => {
+  setKey("");
+  try { await fetch("/auth/logout", { method: "POST" }); } catch {}
+  showKeyForm();
+});
 api("/health").then(h => { document.getElementById("version").textContent = `v${h.version}`; }).catch(() => {});
 route();
 </script>
