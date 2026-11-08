@@ -14,6 +14,7 @@ from contextlib import asynccontextmanager
 import anyio
 from minio.error import MinioException
 from urllib3.exceptions import HTTPError as Urllib3Error
+from dataclasses import replace
 from pathlib import Path, PurePath
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
@@ -25,11 +26,12 @@ from pydantic import BaseModel, Field, StringConstraints
 from . import __version__, auth, recordings, remote, retention, store
 from .auth import Principal
 from .config import Settings
+from .models import Transcript
 from .connectors import Unauthorized
 from .migrate import migrate
 from .recordings import AUDIO_TYPES
 from .registry import available, create, load_builtins
-from .service import analyze_text_with_transcript
+from .service import analyze_text_with_transcript, analyze_transcript
 
 
 @asynccontextmanager
@@ -310,6 +312,60 @@ def delete_call(call_id: UUID, principal: Principal = Depends(require_key)) -> N
     """Delete a call, its transcript, insights and recording. The audit log keeps a record that it happened."""
     if not retention.delete_call(Settings.from_env(), principal.org_id, call_id, principal.actor):
         raise HTTPException(status_code=404, detail="Call not found")
+
+
+SpeakerName = Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=40)]
+
+
+class SpeakerUpdate(BaseModel):
+    names: dict[str, SpeakerName] = Field(default_factory=dict, max_length=20,
+                                          description='Renames, e.g. {"Speaker 1": "Alex"}')
+    rep: SpeakerName | None = Field(None, description="Which speaker (after renaming) is the sales rep")
+
+
+def _reanalyze(call_id: UUID, principal: Principal, update: SpeakerUpdate | None = None) -> dict:
+    """Re-run analysis on a stored call with the org's current settings, optionally renaming speakers."""
+    settings = Settings.from_env()
+    with store.connect(settings.database_url) as conn:
+        loaded = store.load_transcript(conn, principal.org_id, call_id)
+        competitors = store.org_competitors(conn, principal.org_id)
+    if loaded is None:
+        raise HTTPException(status_code=404, detail="Call not found")
+    transcript, row = loaded
+    if row["status"] != "done":
+        raise HTTPException(status_code=409, detail="Only finished calls can be re-analyzed")
+    rep = row["rep_speaker"]
+    if update is not None:
+        unknown = set(update.names) - set(transcript.speakers)
+        if unknown:
+            raise HTTPException(status_code=422, detail=f"Not speakers on this call: {sorted(unknown)}")
+        renamed = [update.names.get(s, s) for s in transcript.speakers]
+        if len(set(renamed)) != len(renamed):
+            raise HTTPException(status_code=422, detail="Two speakers would end up with the same name")
+        transcript = Transcript(transcript.call_id, [replace(s, speaker=update.names.get(s.speaker, s.speaker))
+                                                     for s in transcript.segments])
+        rep = update.names.get(rep, rep) if update.rep is None else update.rep
+        if rep is not None and rep not in renamed:
+            raise HTTPException(status_code=422, detail=f"The rep must be one of {renamed}")
+    report = analyze_transcript(transcript, settings=settings, extra_competitors=competitors, rep_speaker=rep)
+    with store.connect(settings.database_url) as conn:
+        store.replace_analysis(conn, call_id, transcript, report, rep)
+        action = "call.speakers" if update is not None else "call.reanalyze"
+        details = {"names": update.names, "rep": rep} if update is not None else {}
+        store.audit(conn, principal.org_id, principal.actor, action, str(call_id), details)
+    return get_call(call_id, principal)
+
+
+@app.post("/v1/calls/{call_id}/reanalyze")
+def reanalyze_call(call_id: UUID, principal: Principal = Depends(require_key)) -> dict:
+    """Re-run analysis with the current settings (competitor lists, rules, LLM). Returns the updated call."""
+    return _reanalyze(call_id, principal)
+
+
+@app.put("/v1/calls/{call_id}/speakers")
+def update_speakers(call_id: UUID, body: SpeakerUpdate, principal: Principal = Depends(require_key)) -> dict:
+    """Rename speakers and/or say who the rep is, then re-analyze. Returns the updated call."""
+    return _reanalyze(call_id, principal, body)
 
 
 class OrgSettings(BaseModel):

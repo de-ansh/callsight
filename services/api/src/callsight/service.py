@@ -40,8 +40,10 @@ def analyze_transcript(
     *,
     settings: Settings | None = None,
     extra_competitors: Sequence[str] = (),
+    rep_speaker: str | None = None,
 ) -> CallReport:
-    """Run the configured analyzers (and optional LLM summary) over an existing transcript."""
+    """Run the configured analyzers (and optional LLM summary) over an existing transcript.
+    `rep_speaker` (set per call in the UI) overrides the CALLSIGHT_REP_NAMES / first-speaker guess."""
     settings = settings or Settings.from_env()
     load_builtins()
     competitors = tuple(dict.fromkeys((*settings.competitors, *extra_competitors)))
@@ -50,6 +52,6 @@ def analyze_transcript(
         llm = create("llm", settings.llm_provider, base_url=settings.ollama_url, model=settings.ollama_model)
     analyzers = build_analyzers(
         settings.analyzers or (DEFAULT_LLM_ANALYZERS if llm else DEFAULT_ANALYZERS),
-        competitors=competitors, rep_names=settings.rep_names, llm=llm,
+        competitors=competitors, rep_names=(rep_speaker,) if rep_speaker else settings.rep_names, llm=llm,
     )
     return analyze(transcript, analyzers, llm)

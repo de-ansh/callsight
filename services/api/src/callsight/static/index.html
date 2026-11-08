@@ -139,6 +139,11 @@
   .speaker { font-weight: 600; margin-right: 4px; }
   .spk-0 { color: var(--spk-a); } .spk-1 { color: var(--spk-b); }
 
+  .speakers { margin-top: 14px; border-top: 1px solid var(--line); padding-top: 12px; }
+  .spk-row { display: grid; grid-template-columns: 1fr auto; gap: 10px; align-items: center; margin-bottom: 6px; }
+  .spk-row label { margin: 0; display: flex; gap: 6px; align-items: center; color: var(--text); font-size: 13px; white-space: nowrap; }
+  .row-actions { display: flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
+
   /* ----- settings, sign-in */
   .narrow { max-width: 640px; }
   .help { color: var(--muted); font-size: 13px; margin: 4px 0 0; }
@@ -378,10 +383,16 @@ async function showCall(id) {
       try { await api(`/v1/calls/${encodeURIComponent(call.id)}`, { method: "DELETE" }); location.hash = "#/"; }
       catch (e) { if (!handle(e)) { delMsg.textContent = e.message; delBtn.disabled = false; } }
     } }, "Delete call");
+  const rerunBtn = call.status === "done" ? el("button", { class: "btn", type: "button",
+      title: "Apply current settings (competitor list, rules, LLM) to this call", onclick: async () => {
+        rerunBtn.disabled = true; rerunBtn.textContent = "Re-analyzing…";
+        try { await api(`/v1/calls/${encodeURIComponent(call.id)}/reanalyze`, { method: "POST" }); showCall(id); }
+        catch (e) { if (!handle(e)) { delMsg.textContent = e.message; rerunBtn.disabled = false; rerunBtn.textContent = "Re-run analysis"; } }
+      } }, "Re-run analysis") : null;
   const head = el("div", {},
     el("a", { href: "#/" }, "← All calls"),
     el("div", { class: "page-head", style: "margin-top: 8px" },
-      el("h1", {}, call.call_id || short(call.id)), statusTag(call.status), el("span", { class: "spacer" }), delMsg, delBtn),
+      el("h1", {}, call.call_id || short(call.id)), statusTag(call.status), el("span", { class: "spacer" }), delMsg, rerunBtn, delBtn),
     el("p", { class: "meta", style: "margin: -8px 0 16px" },
       `${call.source} · ${call.duration_s == null ? "length unknown" : fmtTime(call.duration_s)} · added ${fmtDate(call.created_at)}`));
 
@@ -423,6 +434,36 @@ async function showCall(id) {
     el("div", { class: "legend" }, ...share.map(([who, v]) =>
       el("span", {}, el("i", { style: `background:${spkVar(who)}` }), `${who} ${Math.round(v * 100)}%`)))) : null;
 
+  // Speakers: rename (e.g. "Speaker 1" -> "Alex") and say who the rep is; saving re-analyzes.
+  const repGuess = call.rep_speaker || speakers[0];
+  const spkInputs = speakers.map((name, i) => {
+    const input = el("input", { type: "text", value: name, id: `spk-name-${i}`, "aria-label": `Name for ${name}`, maxlength: "40" });
+    const radio = el("input", { type: "radio", name: "rep", value: String(i), checked: name === repGuess });
+    return { name, input, radio, row: el("div", { class: "spk-row" }, input, el("label", {}, radio, "Rep")) };
+  });
+  const spkMsg = el("span", { class: "msg", role: "status" });
+  const spkSave = el("button", { class: "btn", type: "submit" }, "Save and re-analyze");
+  const speakerForm = speakers.length ? el("form", { class: "speakers", onsubmit: async e => {
+      e.preventDefault();
+      const names = {}; let rep = null;
+      for (const s of spkInputs) {
+        const v = s.input.value.trim();
+        if (v && v !== s.name) names[s.name] = v;
+        if (s.radio.checked) rep = v || s.name;
+      }
+      spkSave.disabled = true; spkMsg.className = "msg"; spkMsg.textContent = "Saving…";
+      try {
+        await api(`/v1/calls/${encodeURIComponent(call.id)}/speakers`, { method: "PUT",
+          headers: { "content-type": "application/json" }, body: JSON.stringify({ names, rep }) });
+        showCall(id);
+      } catch (e) { if (!handle(e)) { spkMsg.className = "msg error"; spkMsg.textContent = e.message; spkSave.disabled = false; } }
+    } },
+    el("h2", {}, "Speakers"),
+    el("p", { class: "help", style: "margin: -6px 0 8px" },
+      call.rep_speaker ? "Rename speakers or change who the rep is." : "Who is the rep? (Guessed: whoever spoke first.)"),
+    ...spkInputs.map(s => s.row),
+    el("div", { class: "row-actions" }, spkSave, spkMsg)) : null;
+
   const insightCard = i => el("div", { class: `insight s-${i.severity}` },
     el("div", { class: "title" }, i.title),
     i.detail ? el("div", { class: "why" }, i.detail) : null,
@@ -440,7 +481,7 @@ async function showCall(id) {
       el("div", {},
         el("section", { class: "panel summary", "aria-label": "Summary" },
           el("h2", {}, "Summary"), el("p", {}, call.summary),
-          talk ? el("h2", { style: "margin-top: 4px" }, "Talk share") : null, talk),
+          talk ? el("h2", { style: "margin-top: 4px" }, "Talk share") : null, talk, speakerForm),
         call.insights.length ? el("div", {}, ...groups) : el("p", { class: "empty" }, "No insights for this call.")),
       el("section", { class: "panel", "aria-label": "Recording and transcript" },
         audio ? el("div", { class: "player" }, audio) : null, transcript)));
