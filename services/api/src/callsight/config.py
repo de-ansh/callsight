@@ -27,6 +27,10 @@ class Settings:
     s3_bucket: str = "recordings"
     s3_secure: bool = False  # True for https endpoints
     secret_key: str = ""  # signs short-lived recording links; set it when running more than one API process
+    oidc_issuer: str = ""  # single sign-on via any OpenID Connect provider; empty = disabled
+    oidc_client_id: str = ""
+    oidc_client_secret: str = ""
+    public_url: str = "http://localhost:8000"  # where users reach callsight; the OIDC redirect URI is built from it
     retention_days: int = 0  # delete calls (and recordings) older than this; 0 = keep forever
     analyzers: tuple[str, ...] = ()  # empty = pipeline.DEFAULT_ANALYZERS (or DEFAULT_LLM_ANALYZERS with an LLM)
     whisper_model: str = "small"  # faster-whisper size: tiny, base, small, medium, large-v3
@@ -47,6 +51,10 @@ class Settings:
             s3_bucket=env.get("CALLSIGHT_S3_BUCKET", cls.s3_bucket),
             s3_secure=env.get("CALLSIGHT_S3_SECURE", "").strip().lower() in ("1", "true", "yes"),
             secret_key=env.get("CALLSIGHT_SECRET_KEY", ""),
+            oidc_issuer=env.get("CALLSIGHT_OIDC_ISSUER", "").rstrip("/"),
+            oidc_client_id=env.get("CALLSIGHT_OIDC_CLIENT_ID", ""),
+            oidc_client_secret=env.get("CALLSIGHT_OIDC_CLIENT_SECRET", ""),
+            public_url=env.get("CALLSIGHT_PUBLIC_URL", cls.public_url).rstrip("/"),
             retention_days=int(env.get("CALLSIGHT_RETENTION_DAYS") or 0),
             analyzers=_csv(env.get("CALLSIGHT_ANALYZERS")),
             whisper_model=env.get("CALLSIGHT_WHISPER_MODEL", cls.whisper_model),

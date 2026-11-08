@@ -23,7 +23,9 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request,
 from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
 
-from . import __version__, auth, recordings, remote, retention, store
+from starlette.middleware.sessions import SessionMiddleware
+
+from . import __version__, auth, recordings, remote, retention, sso, store
 from .auth import Principal
 from .config import Settings
 from .models import Transcript
@@ -90,7 +92,20 @@ class BodySizeLimit:
 
 app = FastAPI(title="Callsight", version=__version__, lifespan=lifespan)
 app.add_middleware(BodySizeLimit)
+# Added last = outermost, so the session is decoded before BodySizeLimit authenticates uploads.
+_startup_settings = Settings.from_env()
+app.add_middleware(
+    SessionMiddleware,
+    secret_key=auth._link_secret(_startup_settings.secret_key).decode(),
+    session_cookie="callsight_session",
+    max_age=sso.SESSION_HOURS * 3600,
+    same_site="lax",
+    https_only=_startup_settings.public_url.startswith("https://"),
+)
+app.include_router(sso.router)
 log = logging.getLogger("callsight.api")
+if sso.enabled(_startup_settings) and not _startup_settings.secret_key:
+    log.warning("CALLSIGHT_SECRET_KEY is not set: sign-in sessions will end whenever the API restarts")
 
 
 @app.exception_handler(MinioException)
@@ -114,12 +129,23 @@ def _database_url(settings: Settings) -> str:
     return settings.database_url
 
 
+SAFE_METHODS = {"GET", "HEAD", "OPTIONS"}
+
+
 def require_key(request: Request) -> Principal:
-    """The organization behind the request's API key; 401 without a valid one."""
+    """The organization behind the request's API key, or behind the signed-in user's session.
+    401 without either."""
     header = request.headers.get("authorization", "")
     key = header[7:].strip() if header.lower().startswith("bearer ") else request.headers.get("x-api-key")
     if not key:
-        raise HTTPException(status_code=401, detail="Missing API key", headers={"WWW-Authenticate": "Bearer"})
+        principal = sso.session_principal(request)
+        if principal is None:
+            raise HTTPException(status_code=401, detail="Sign in or send an API key", headers={"WWW-Authenticate": "Bearer"})
+        # Cookies ride along on cross-site requests; a custom header cannot be sent cross-site without
+        # a CORS preflight (which we never allow), so requiring it blocks CSRF on session-authenticated writes.
+        if request.method not in SAFE_METHODS and request.headers.get("x-callsight-csrf") != "1":
+            raise HTTPException(status_code=403, detail="Missing X-Callsight-CSRF header")
+        return principal
     with store.connect(_database_url(Settings.from_env())) as conn:
         principal = auth.principal_for_key(conn, key)
     if principal is None:
@@ -130,6 +156,12 @@ def require_key(request: Request) -> Principal:
 @app.get("/", include_in_schema=False)
 def ui() -> FileResponse:
     return FileResponse(_STATIC / "index.html")
+
+
+@app.get("/auth/me")
+def whoami(principal: Principal = Depends(require_key)) -> dict:
+    """Who this request is authenticated as: 'user:<email>' for sign-in, 'key:<name>' for API keys."""
+    return {"actor": principal.actor, "org_id": principal.org_id}
 
 
 @app.get("/health")

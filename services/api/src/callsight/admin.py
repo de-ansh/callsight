@@ -10,7 +10,7 @@ import sys
 from importlib.resources import files
 
 from . import store
-from .auth import create_key, revoke_key
+from .auth import allow_domain, create_key, disallow_domain, revoke_key
 from .config import Settings
 from .migrate import migrate
 from .service import analyze_text_with_transcript
@@ -25,6 +25,11 @@ def main(argv: list[str] | None = None) -> int:
         p = sub.add_parser(name)
         p.add_argument("--org", default="default", help="organization name (created if missing)")
         p.add_argument("--name", required=True, help="a label for the key, e.g. the person or system using it")
+    d = sub.add_parser("allow-domain", help="let people with a verified email at DOMAIN sign in to ORG")
+    d.add_argument("--org", default="default")
+    d.add_argument("--domain", required=True)
+    dd = sub.add_parser("disallow-domain", help="stop sign-in for DOMAIN (existing sessions end immediately)")
+    dd.add_argument("--domain", required=True)
     w = sub.add_parser("webhook-secret", help="print an org's webhook secret and URL path")
     w.add_argument("--org", default="default")
     sub.add_parser("demo", help="create a 'demo' org with a key and six example calls")
@@ -42,6 +47,17 @@ def main(argv: list[str] | None = None) -> int:
         elif args.command == "revoke-key":
             n = revoke_key(conn, args.org, args.name)
             print(f"revoked {n} key(s)")
+            return 0 if n else 1
+        elif args.command == "allow-domain":
+            try:
+                allow_domain(conn, args.org, args.domain)
+            except ValueError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+            print(f"People with a verified @{args.domain.strip().lower().lstrip('@')} email can now sign in to {args.org!r}.")
+        elif args.command == "disallow-domain":
+            n = disallow_domain(conn, args.domain)
+            print(f"removed {n} domain(s)")
             return 0 if n else 1
         elif args.command == "demo":
             return _demo(conn, settings)
