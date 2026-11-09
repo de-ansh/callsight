@@ -7,7 +7,7 @@ transcript lines that support it.
 
 > **Status: v0.4.0, early.** Text and audio calls, rule-based and local-LLM analysis, a web
 > UI, a webhook connector, API keys with per-organization separation, and an audit log all
-> work and are tested. Not yet: speaker separation for mono recordings, telephony/meeting
+> work and are tested. Speaker separation for mono recordings is opt-in (see below). Not yet: telephony/meeting
 > connectors. Run it behind a reverse proxy for TLS and rate limiting. See the
 > [roadmap](docs/roadmap.md).
 
@@ -126,6 +126,21 @@ curl -s localhost:8000/v1/analyze -H "Authorization: Bearer $KEY" -H 'content-ty
 - **Request limits.** Uploads may be up to 500 MB and other requests up to 10 MB, enforced while
   the body streams in. Uploads are authenticated before any of the body is read. Rate limiting
   is left to the reverse proxy, because behind a proxy every client shares one address.
+
+### Mono recordings: separating speakers (opt-in)
+
+Stereo phone recordings already get one speaker per channel. Mono recordings (Zoom, Meet,
+Teams exports) are one speaker unless diarization is on. With it, [pyannote](https://github.com/pyannote/pyannote-audio)
+finds who spoke when and each transcribed word is given to the speaker talking at that moment.
+
+1. Accept the model's terms (free account) at https://huggingface.co/pyannote/speaker-diarization-community-1
+   and create a read-only token.
+2. Build the image with PyTorch and pyannote (adds about 1–2 GB):
+   `docker compose build --build-arg EXTRAS=asr,diarize`
+3. Set `CALLSIGHT_DIARIZATION=pyannote` and `HF_TOKEN=<token>`, then start the worker.
+
+Speakers come out as "Speaker 1", "Speaker 2", ... in order of first speaking; rename them
+and mark the rep on the call page. Diarization is slow on CPU (roughly the length of the call).
 
 ### Sending calls from another system (webhook)
 
