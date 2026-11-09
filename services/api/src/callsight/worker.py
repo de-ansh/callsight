@@ -74,7 +74,10 @@ def main() -> None:
     migrate(settings.database_url)
     load_builtins()
     log.info("loading whisper model '%s'", settings.whisper_model)
-    asr = create("asr", "whisper", model=settings.whisper_model)
+    asr = create("asr", "whisper", model=settings.whisper_model, diarization=settings.diarization,
+                 diarization_model=settings.diarization_model, hf_token=settings.hf_token)
+    if settings.diarization:
+        log.info("speaker diarization for mono recordings: %s (%s)", settings.diarization, settings.diarization_model)
     log.info("worker ready")
     next_purge = 0.0
     while True:

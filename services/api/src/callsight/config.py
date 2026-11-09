@@ -31,6 +31,9 @@ class Settings:
     oidc_client_id: str = ""
     oidc_client_secret: str = ""
     public_url: str = "http://localhost:8000"  # where users reach callsight; the OIDC redirect URI is built from it
+    diarization: str = ""  # "pyannote" separates speakers in mono recordings (needs the diarize extra + HF_TOKEN)
+    diarization_model: str = "pyannote/speaker-diarization-community-1"
+    hf_token: str = ""
     retention_days: int = 0  # delete calls (and recordings) older than this; 0 = keep forever
     analyzers: tuple[str, ...] = ()  # empty = pipeline.DEFAULT_ANALYZERS (or DEFAULT_LLM_ANALYZERS with an LLM)
     whisper_model: str = "small"  # faster-whisper size: tiny, base, small, medium, large-v3
@@ -55,6 +58,9 @@ class Settings:
             oidc_client_id=env.get("CALLSIGHT_OIDC_CLIENT_ID", ""),
             oidc_client_secret=env.get("CALLSIGHT_OIDC_CLIENT_SECRET", ""),
             public_url=env.get("CALLSIGHT_PUBLIC_URL", cls.public_url).rstrip("/"),
+            diarization=env.get("CALLSIGHT_DIARIZATION", "").strip().lower(),
+            diarization_model=env.get("CALLSIGHT_DIARIZATION_MODEL", cls.diarization_model),
+            hf_token=env.get("HF_TOKEN", ""),
             retention_days=int(env.get("CALLSIGHT_RETENTION_DAYS") or 0),
             analyzers=_csv(env.get("CALLSIGHT_ANALYZERS")),
             whisper_model=env.get("CALLSIGHT_WHISPER_MODEL", cls.whisper_model),
