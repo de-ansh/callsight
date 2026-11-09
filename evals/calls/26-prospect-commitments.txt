@@ -1,0 +1,6 @@
+# Only the prospect makes commitments here; none are rep action items.
+# no_next_step: false
+[00:00] Paul: Thanks for the update, Rita.
+[00:03] Rita: I'll talk to finance this week and I will send you their feedback.
+[00:09] Paul: Perfect. Should we reconnect on the 20th at noon?
+[00:13] Rita: Yes, the 20th at noon.

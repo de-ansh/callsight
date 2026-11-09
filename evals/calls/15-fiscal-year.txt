@@ -1,0 +1,7 @@
+# Timing objection tied to a fiscal year; the rep proposes a concrete follow-up that is accepted.
+# no_next_step: false
+[00:00] Ravi: So, does this look like a fit for the team?
+[00:04] Hannah: It does, but we can't start anything until our new fiscal year in April. {timing_objection}
+[00:11] Ravi: Makes sense. Should we put a planning call on the calendar for March 10?
+[00:17] Hannah: Yes, March 10 is fine.
+[00:20] Ravi: Great, I'll send the invite today. {action_item}

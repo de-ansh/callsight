@@ -1,0 +1,13 @@
+# A longer discovery call with one late pricing concern and an agreed next step.
+# no_next_step: false
+[00:00] Nina: Thanks for making time, Hugo. Tell me about the team.
+[00:05] Hugo: Twelve reps, mostly inbound, a few doing outbound to mid-market.
+[00:12] Nina: How do you coach them today?
+[00:15] Hugo: Weekly one-on-ones, and I listen to a couple of calls each when I can.
+[00:22] Nina: What's the biggest gap?
+[00:25] Hugo: Discovery. They jump to demos too fast.
+[00:30] Nina: That's exactly what our discovery scorecard catches.
+[00:35] Hugo: My only worry is that per-seat pricing gets expensive at twelve seats. {pricing_objection}
+[00:42] Nina: We have team pricing that caps it. I'll send you the numbers today. {action_item}
+[00:48] Hugo: Great. Let's look at them together Monday at 4.
+[00:53] Nina: Monday at 4 it is.

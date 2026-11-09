@@ -206,3 +206,26 @@ def test_polite_not_right_now_after_anything_else_is_not_a_timing_objection():
               "[00:06] Alex: Could we start next month?\n[00:09] Priya: Not right now, the budget is frozen until March.\n")
     insight = next(i for i in analyze(t, build_analyzers(["objections"])).insights if i.kind == "timing_objection")
     assert [e.segment_id for e in insight.evidence] == [3]  # the real objection, not the polite close
+
+
+def test_concrete_times_count_as_next_steps():
+    for line in ["Thursday at 3 works.", "Let's review it Monday at 4.", "Yes, the 20th at noon.", "March 10 is fine."]:
+        t = parse(f"[00:00] Alex: Shall we meet again?\n[00:05] Priya: {line}\n[00:09] Alex: Great.")
+        assert "no_next_step" not in kinds(analyze(t, build_analyzers(["next_step"]))), line
+
+
+def test_a_declined_follow_up_is_not_a_next_step():
+    t = parse("[00:00] Alex: Can I schedule a follow-up demo next week?\n"
+              "[00:05] Priya: No, I don't think so.\n[00:09] Alex: Understood.")
+    assert "no_next_step" in kinds(analyze(t, build_analyzers(["next_step"])))
+    t = parse("[00:00] Alex: Can I schedule a follow-up for Friday?\n[00:05] Priya: No problem, Friday works.")
+    assert "no_next_step" not in kinds(analyze(t, build_analyzers(["next_step"])))  # "no problem" is a yes
+
+
+def test_commitments_need_a_concrete_action():
+    t = parse("[00:00] Alex: I'll be honest, this was a tough quarter.\n"
+              "[00:05] Alex: Let me tell you about our roadmap.\n"
+              "[00:09] Alex: Let me get back to you by Friday with pricing.\n"
+              "[00:14] Alex: I'm going to set up a sandbox for you.\n[00:20] Priya: Thanks.")
+    items = [i for i in analyze(t, build_analyzers(["action_items"])).insights if i.kind == "action_item"]
+    assert [i.evidence[0].segment_id for i in items] == [2, 3]

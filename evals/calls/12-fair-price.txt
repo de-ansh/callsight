@@ -1,0 +1,9 @@
+# Positive price statements are not objections; an authority objection is phrased softly.
+# no_next_step: true
+[00:00] Owen: Thanks for reviewing the proposal, Grace. How did it land?
+[00:06] Grace: The price was fair, no complaints there.
+[00:10] Owen: Great to hear. Anything holding things up?
+[00:14] Grace: Legal and procurement both have to sign off before I can commit to anything. {authority_objection}
+[00:22] Owen: Understood. Who should I talk to in procurement?
+[00:27] Grace: I'll ask them to reach out to you.
+[00:31] Owen: Thanks, Grace.

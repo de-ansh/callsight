@@ -92,7 +92,7 @@ def test_llm_analyzer_requires_an_llm():
 
 def test_every_labelled_call_loads_with_known_tags():
     calls = load_dir(EVALS)
-    assert len(calls) >= 10
+    assert len(calls) >= 30
     assert all("{" not in s.text for c in calls for s in c.transcript.segments)  # tags stripped
 
 
@@ -111,10 +111,11 @@ def test_baseline_scores_are_stable():
     """Pins the rule-based numbers so a change to an analyzer shows up as a diff here."""
     load_builtins()
     s = evaluate(load_dir(EVALS), Settings())
-    assert (s["pricing_objection"].tp, s["pricing_objection"].fp, s["pricing_objection"].fn) == (2, 1, 3)
-    assert (s["competitor_mention"].tp, s["competitor_mention"].fp, s["competitor_mention"].fn) == (3, 0, 0)
-    assert (s["timing_objection"].tp, s["timing_objection"].fp, s["timing_objection"].fn) == (1, 0, 3)
-    assert (s["no_next_step"].tp, s["no_next_step"].fp, s["no_next_step"].fn) == (3, 4, 1)
+    assert (s["pricing_objection"].tp, s["pricing_objection"].fp, s["pricing_objection"].fn) == (6, 3, 4)
+    assert (s["competitor_mention"].tp, s["competitor_mention"].fp, s["competitor_mention"].fn) == (6, 0, 0)
+    assert (s["timing_objection"].tp, s["timing_objection"].fp, s["timing_objection"].fn) == (3, 0, 6)
+    assert (s["action_item"].tp, s["action_item"].fp, s["action_item"].fn) == (18, 0, 1)
+    assert (s["no_next_step"].tp, s["no_next_step"].fp, s["no_next_step"].fn) == (13, 2, 0)
 
 
 def test_hybrid_is_the_default_when_an_llm_is_configured(monkeypatch):

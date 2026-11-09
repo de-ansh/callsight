@@ -34,12 +34,31 @@ predictions / all predictions; recall = labelled lines found / all labelled line
 
 ## Results
 
-The **seed set** has 10 calls and 31 labels. **Caveat:** the developer wrote these calls to
-probe known weaknesses of keyword rules, so they are harder for the baseline than real calls
-would be, and too few for the percentages to be precise. Treat them as a regression check and a
-direction, not a benchmark. Replace them with labelled real calls once there are users.
+### Rules, on all 30 calls (52 labelled lines)
 
-| Kind | Rules: precision / recall | `llm_insights`, llama3.2:3b: precision / recall |
+| Kind | Rules: precision / recall |
+|---|---|
+| pricing_objection | 67% / 60% |
+| timing_objection | 100% / 33% |
+| authority_objection | – / 0% (no rule) |
+| need_objection | – / 0% (no rule) |
+| competitor_mention | 100% / 100% |
+| action_item | 100% / 95% |
+| no_next_step | 87% / 100% |
+
+**Caveat, read before quoting these:** every call was written by the developer to probe known
+weaknesses, and the next-step and commitment rules were then **tuned on this same set**
+(concrete times like "Monday at 4", declined follow-ups, commitment verbs). Before tuning they
+scored 52% / 85% (next step) and 84% / 84% (commitments), so part of the gain is
+overfitting. Treat these numbers as a regression check, not a benchmark. Replace or extend the set
+with labelled real calls (calls 11–30 were added after the rules below were first written; 1–10
+are the original seed set).
+
+### LLM vs rules, on the original 10 calls
+
+Not yet rerun on the 30-call set.
+
+| Kind | Rules (then) | `llm_insights`, llama3.2:3b |
 |---|---|---|
 | pricing_objection | 67% / 40% | **75% / 60%** |
 | timing_objection | 100% / 25% | **67% / 50%** |

@@ -1,0 +1,8 @@
+# The prospect asks about a discount out of curiosity, then says price is fine.
+# no_next_step: false
+[00:00] Felix: Any other questions before we wrap up?
+[00:04] Laura: Just curious, do you offer discounts for nonprofits?
+[00:08] Felix: We do, twenty percent.
+[00:11] Laura: Good to know, though we're not a nonprofit and the price is fine as it is.
+[00:16] Felix: Great. Shall we start onboarding next Tuesday at 10?
+[00:20] Laura: Tuesday at 10 works.

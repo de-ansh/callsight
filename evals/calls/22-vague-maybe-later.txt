@@ -1,0 +1,7 @@
+# Vague timing push-back and no next step.
+# no_next_step: true
+[00:00] Kai: So what do you think?
+[00:03] Noor: It's interesting. Maybe we can revisit this later in the year. {timing_objection}
+[00:09] Kai: Sure. Is there a better time to reconnect?
+[00:13] Noor: I'm not sure. I'll reach out when things calm down.
+[00:17] Kai: Okay, thanks Noor.

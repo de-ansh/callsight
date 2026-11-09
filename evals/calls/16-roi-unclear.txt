@@ -1,0 +1,7 @@
+# Pricing objection phrased as ROI doubt.
+# no_next_step: true
+[00:00] Elena: Did you get a chance to look at the numbers?
+[00:04] Marcus: I did. I'm not convinced the return justifies that kind of spend for a team our size. {pricing_objection}
+[00:12] Elena: What would you need to see?
+[00:16] Marcus: I'm not sure yet. I'll think about it.
+[00:20] Elena: Okay, thanks Marcus.

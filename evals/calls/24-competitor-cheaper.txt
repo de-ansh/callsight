@@ -1,0 +1,8 @@
+# Pricing objection by comparison to a competitor.
+# competitors: Avoma
+# no_next_step: true
+[00:00] Max: How does our proposal compare to what else you're looking at?
+[00:05] Ella: Avoma quoted us about half of your price. {competitor_mention} {pricing_objection}
+[00:10] Max: Their pricing goes up quickly once you add analysis.
+[00:15] Ella: Maybe. We'll compare and get back to you.
+[00:19] Max: Sounds good, thanks Ella.

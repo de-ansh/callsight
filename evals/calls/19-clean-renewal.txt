@@ -1,0 +1,7 @@
+# A friendly renewal with no objections and a clear next step.
+# no_next_step: false
+[00:00] Sofia: Thanks for renewing early, Ben.
+[00:04] Ben: Happy to. The team uses it every day.
+[00:08] Sofia: Glad to hear it. Should we schedule the yearly review for January 15?
+[00:13] Ben: January 15 works.
+[00:16] Sofia: I'll send the calendar invite now. {action_item}

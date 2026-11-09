@@ -1,0 +1,7 @@
+# Authority objection from a security review requirement.
+# no_next_step: false
+[00:00] Amir: Where are you in your evaluation?
+[00:04] Julia: We like it, but nothing goes live here until our security team approves it. {authority_objection}
+[00:11] Amir: Understood. I'll send our security questionnaire answers today. {action_item}
+[00:17] Julia: Thanks. Let's book thirty minutes with our security lead on the 12th.
+[00:22] Amir: The 12th works, I'll send an invite. {action_item}

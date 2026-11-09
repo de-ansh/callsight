@@ -1,0 +1,8 @@
+# The rep names a competitor; mentions count whoever says them.
+# competitors: Gong
+# no_next_step: false
+[00:00] Nadia: A lot of teams come to us after trying Gong. {competitor_mention}
+[00:05] Victor: We actually looked at Gong last year. It was a lot of tool for us. {competitor_mention}
+[00:12] Nadia: That's common. Want to try ours with two reps for two weeks?
+[00:18] Victor: Sure, let's start the trial on Monday.
+[00:22] Nadia: I'll set up both accounts before Monday. {action_item}
