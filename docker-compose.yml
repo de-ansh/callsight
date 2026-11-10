@@ -25,9 +25,9 @@ services:
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-callsight-dev-only}
     volumes:
       - minio-data:/data
-    ports:
-      - "9000:9000"
-      - "9001:9001"
+    ports:  # only for the MinIO console / local debugging; the API reaches MinIO on the internal network
+      - "${MINIO_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
     healthcheck:
       test: ["CMD", "mc", "ready", "local"]
       interval: 5s
@@ -62,7 +62,7 @@ services:
       minio:
         condition: service_healthy
     ports:
-      - "8000:8000"
+      - "${CALLSIGHT_PORT:-8000}:8000"
     healthcheck:
       test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"]
       interval: 10s

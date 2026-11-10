@@ -82,13 +82,16 @@ def save_call(
 def create_queued_call(
     conn: psycopg.Connection, org_id: UUID, call_id: UUID, external_id: str, recording_key: str | None = None,
     recording_url: str | None = None, source: str = "audio",
+    speaker_names: dict[str, str] | None = None, rep_speaker: str | None = None,
 ) -> None:
-    """Register a recording for the worker: already in storage (key) or to be fetched (url)."""
+    """Register a recording for the worker: already in storage (key) or to be fetched (url).
+    `speaker_names` maps stereo channel labels to people; the worker applies it to stereo recordings."""
     with conn.transaction():
         conn.execute(
-            "INSERT INTO calls (id, org_id, external_id, source, status, recording_key, recording_url)"
-            " VALUES (%s, %s, %s, %s, 'queued', %s, %s)",
-            (call_id, org_id, external_id, source, recording_key, recording_url),
+            "INSERT INTO calls (id, org_id, external_id, source, status, recording_key, recording_url,"
+            " speaker_names, rep_speaker) VALUES (%s, %s, %s, %s, 'queued', %s, %s, %s, %s)",
+            (call_id, org_id, external_id, source, recording_key, recording_url,
+             Jsonb(speaker_names) if speaker_names else None, rep_speaker),
         )
 
 
@@ -156,6 +159,24 @@ def trends(conn: psycopg.Connection, org_id: UUID, days: int) -> dict[str, Any]:
             "weekly": weekly, "needs_attention": attention}
 
 
+def access_overview(conn: psycopg.Connection, org_id: UUID) -> dict[str, Any]:
+    """Who can get in: API keys (never their hashes), allowed sign-in domains, recent sign-ins."""
+    return {
+        "keys": conn.execute(
+            "SELECT name, created_at, revoked_at FROM api_keys WHERE org_id = %s ORDER BY revoked_at NULLS FIRST, created_at DESC",
+            (org_id,),
+        ).fetchall(),
+        "domains": conn.execute(
+            "SELECT domain, created_at FROM org_domains WHERE org_id = %s ORDER BY domain", (org_id,)
+        ).fetchall(),
+        "sign_ins": conn.execute(
+            "SELECT target AS email, max(at) AS last_sign_in, count(*) AS sign_ins FROM audit_log"
+            " WHERE org_id = %s AND action = 'user.sign_in' GROUP BY target ORDER BY last_sign_in DESC LIMIT 50",
+            (org_id,),
+        ).fetchall(),
+    }
+
+
 def list_audit(conn: psycopg.Connection, org_id: UUID, limit: int, offset: int) -> list[dict[str, Any]]:
     return conn.execute(
         "SELECT actor, action, target, details, at FROM audit_log WHERE org_id = %s"
@@ -212,15 +233,17 @@ def claim_job(conn: psycopg.Connection) -> dict[str, Any] | None:
             "   WHERE status = 'queued'"
             f"     OR (status = 'processing' AND claimed_at < now() - interval '{STALE_CLAIM}')"
             "   ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1)"
-            " RETURNING id, org_id, external_id, recording_key, recording_url"
+            " RETURNING id, org_id, external_id, recording_key, recording_url, speaker_names, rep_speaker"
         ).fetchone()
 
 
-def complete_job(conn: psycopg.Connection, call_id: UUID, transcript: Transcript, report: CallReport) -> None:
+def complete_job(conn: psycopg.Connection, call_id: UUID, transcript: Transcript, report: CallReport,
+                 rep_speaker: str | None = None) -> None:
     with conn.transaction():
         conn.execute(
-            "UPDATE calls SET status = 'done', duration_s = %s, summary = %s, talk_share = %s WHERE id = %s",
-            (report.duration_s, report.summary, Jsonb(report.talk_share), call_id),
+            "UPDATE calls SET status = 'done', duration_s = %s, summary = %s, talk_share = %s, rep_speaker = %s"
+            " WHERE id = %s",
+            (report.duration_s, report.summary, Jsonb(report.talk_share), rep_speaker, call_id),
         )
         # A stale claim can be retried while the first worker still finishes; last write wins.
         conn.execute("DELETE FROM segments WHERE call_id = %s", (call_id,))
@@ -256,6 +279,32 @@ def replace_analysis(
         _insert_results(conn, call_id, transcript, report)
 
 
+def request_reanalysis(conn: psycopg.Connection, org_id: UUID) -> int:
+    """Mark every finished call in the org for re-analysis. Returns how many were marked."""
+    with conn.transaction():
+        return conn.execute(
+            "UPDATE calls SET reanalyze_requested_at = now() WHERE org_id = %s AND status = 'done'", (org_id,)
+        ).rowcount
+
+
+def pending_reanalysis(conn: psycopg.Connection, org_id: UUID) -> int:
+    return conn.execute(
+        "SELECT count(*) AS n FROM calls WHERE org_id = %s AND reanalyze_requested_at IS NOT NULL", (org_id,)
+    ).fetchone()["n"]
+
+
+def claim_reanalysis(conn: psycopg.Connection, org_id: UUID) -> UUID | None:
+    """Take one marked call (each call goes to exactly one runner, even with several API processes)."""
+    with conn.transaction():
+        row = conn.execute(
+            "UPDATE calls SET reanalyze_requested_at = NULL WHERE id = ("
+            " SELECT id FROM calls WHERE org_id = %s AND reanalyze_requested_at IS NOT NULL"
+            " ORDER BY reanalyze_requested_at, id FOR UPDATE SKIP LOCKED LIMIT 1) RETURNING id",
+            (org_id,),
+        ).fetchone()
+    return row["id"] if row else None
+
+
 def fail_job(conn: psycopg.Connection, call_id: UUID, error: str) -> None:
     with conn.transaction():
         conn.execute(
@@ -264,20 +313,43 @@ def fail_job(conn: psycopg.Connection, call_id: UUID, error: str) -> None:
         )
 
 
-def list_calls(
-    conn: psycopg.Connection, org_id: UUID, limit: int, offset: int,
-    query: str | None = None, status: str | None = None,
-) -> list[dict[str, Any]]:
-    """Newest first, with insight counts per severity. `query` matches the call name or anything said."""
+def _call_filters(org_id: UUID, query: str | None, status: str | None, days: int | None = None
+                  ) -> tuple[list[str], list[Any]]:
+    """SQL conditions on `calls c` shared by the call list and the CSV export."""
     where, params = ["c.org_id = %s"], [org_id]
     if status:
         where.append("c.status = %s")
         params.append(status)
+    if days:
+        where.append("c.created_at >= now() - make_interval(days => %s)")
+        params.append(days)
     if query:
         # shortcut: ILIKE scans every segment; add a trigram or full-text index when orgs hold many calls.
         pattern = "%" + query.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
         where.append("(c.external_id ILIKE %s OR EXISTS (SELECT 1 FROM segments s WHERE s.call_id = c.id AND s.text ILIKE %s))")
         params += [pattern, pattern]
+    return where, params
+
+
+def export_rows(conn: psycopg.Connection, org_id: UUID, query: str | None = None, status: str | None = None,
+                days: int | None = None) -> list[dict[str, Any]]:
+    """One row per insight (calls without insights get one empty row), oldest call first."""
+    where, params = _call_filters(org_id, query, status, days)
+    return conn.execute(
+        "SELECT c.id, c.external_id, c.created_at, c.source, c.status, c.duration_s,"
+        " i.severity, i.kind, i.title, i.detail, i.evidence"
+        " FROM calls c LEFT JOIN insights i ON i.call_id = c.id"
+        f" WHERE {' AND '.join(where)} ORDER BY c.created_at, c.id, i.idx",
+        params,
+    ).fetchall()
+
+
+def list_calls(
+    conn: psycopg.Connection, org_id: UUID, limit: int, offset: int,
+    query: str | None = None, status: str | None = None,
+) -> list[dict[str, Any]]:
+    """Newest first, with insight counts per severity. `query` matches the call name or anything said."""
+    where, params = _call_filters(org_id, query, status)
     return conn.execute(
         "SELECT c.id, c.external_id, c.source, c.status, c.duration_s, c.created_at,"
         " count(i.*) AS insight_count,"

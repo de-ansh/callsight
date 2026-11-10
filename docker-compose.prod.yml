@@ -1,0 +1,42 @@
+# Production overrides. Use with the base file:
+#   docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
+# See docs/deployment.md. Compose refuses to start until the required secrets below are set.
+x-callsight-env: &prod-env
+  CALLSIGHT_DATABASE_URL: postgresql://${POSTGRES_USER:-callsight}:${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}@db:5432/${POSTGRES_DB:-callsight}
+  CALLSIGHT_S3_SECRET_KEY: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+  CALLSIGHT_SECRET_KEY: ${CALLSIGHT_SECRET_KEY:?set CALLSIGHT_SECRET_KEY (openssl rand -hex 32)}
+  CALLSIGHT_PUBLIC_URL: ${CALLSIGHT_PUBLIC_URL:?set CALLSIGHT_PUBLIC_URL, e.g. https://calls.example.com}
+
+services:
+  db:
+    restart: unless-stopped
+    environment:
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?set POSTGRES_PASSWORD}
+
+  minio:
+    restart: unless-stopped
+    ports: !reset []   # reachable only by the API and worker, on the internal network
+    environment:
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:?set MINIO_ROOT_PASSWORD}
+
+  api:
+    restart: unless-stopped
+    ports: !reset []   # only the proxy is published
+    environment: *prod-env
+
+  worker:
+    restart: unless-stopped
+    environment: *prod-env
+
+  proxy:
+    image: nginx:1.27-alpine
+    restart: unless-stopped
+    depends_on:
+      api:
+        condition: service_healthy
+    ports:
+      - "${HTTP_PORT:-80}:80"
+      - "${HTTPS_PORT:-443}:443"
+    volumes:
+      - ./deploy/nginx.conf:/etc/nginx/conf.d/default.conf:ro
+      - ${CALLSIGHT_TLS_DIR:-./deploy/certs}:/etc/nginx/certs:ro

@@ -149,3 +149,26 @@ def test_admin_rejects_invalid_domains(monkeypatch, capsys):
     monkeypatch.setenv("CALLSIGHT_DATABASE_URL", DB_URL)
     assert admin.main(["allow-domain", "--org", "x", "--domain", "not a domain"]) == 2
     assert "not a valid domain" in capsys.readouterr().err
+
+
+def test_access_overview_lists_keys_domains_and_sign_ins_without_secrets(provider, domain):
+    browser, _ = sign_in(provider, f"hana@{domain}")
+    with store.connect(DB_URL) as conn:
+        org = conn.execute("SELECT org_id FROM org_domains WHERE domain = %s", (domain,)).fetchone()["org_id"]
+        name = conn.execute("SELECT name FROM orgs WHERE id = %s", (org,)).fetchone()["name"]
+        key = auth.create_key(conn, name, "ci-bot")
+        auth.create_key(conn, name, "old-laptop")
+        auth.revoke_key(conn, name, "old-laptop")
+    res = browser.get("/v1/access")
+    a = res.json()
+    assert {k["name"]: k["revoked_at"] is None for k in a["keys"]} == {"ci-bot": True, "old-laptop": False}
+    assert a["domains"][0]["domain"] == domain
+    assert a["sign_ins"][0]["email"] == f"hana@{domain}" and a["sign_ins"][0]["sign_ins"] == 1
+    assert "key_hash" not in res.text and key not in res.text and auth.hash_key(key) not in res.text
+
+    other = TestClient(app)
+    other_key = None
+    with store.connect(DB_URL) as conn:
+        other_key = auth.create_key(conn, f"other-{uuid.uuid4().hex[:6]}", "x")
+    theirs = other.get("/v1/access", headers={"authorization": f"Bearer {other_key}"}).json()
+    assert theirs["domains"] == [] and theirs["sign_ins"] == [] and [k["name"] for k in theirs["keys"]] == ["x"]

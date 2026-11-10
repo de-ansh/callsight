@@ -26,6 +26,7 @@ class Segment:
 class Transcript:
     call_id: str
     segments: list[Segment]
+    stereo: bool = False  # speakers come from stereo channels (Speaker 1 = left, Speaker 2 = right)
 
     @property
     def duration_s(self) -> float:
