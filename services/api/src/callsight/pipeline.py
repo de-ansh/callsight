@@ -12,9 +12,9 @@ from .registry import create
 log = logging.getLogger(__name__)
 
 DEFAULT_ANALYZERS = ("talk_ratio", "objections", "competitors", "next_step", "action_items")
-# With an LLM configured: the model for objections and next steps, rules where they measured
-# better (commitments, exact competitor names). See evals/README.md.
-DEFAULT_LLM_ANALYZERS = ("talk_ratio", "competitors", "action_items", "llm_insights")
+# With an LLM configured: the model for objections, rules where they measured better
+# (commitments, next step, exact competitor names). See evals/README.md.
+DEFAULT_LLM_ANALYZERS = ("talk_ratio", "competitors", "action_items", "next_step", "llm_insights")
 MAX_PROMPT_CHARS = 12_000
 _SEVERITY_RANK = {"high": 0, "medium": 1, "low": 2, "info": 3}
 

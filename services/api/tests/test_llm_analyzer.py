@@ -44,7 +44,7 @@ def test_valid_answer_becomes_cited_insights():
         "sentiment_shifts": [{"line": 3, "direction": "positive", "note": "agrees to meet"}],
     })
     assert [(i.kind, [e.segment_id for e in i.evidence]) for i in insights] == [
-        ("pricing_objection", [1]), ("next_step", [3]), ("sentiment_shift", [3]),
+        ("pricing_objection", [1]), ("sentiment_shift", [3]),  # next step and commitments come from the rules
     ]
     prompt, json_mode = llm.prompts[0]
     assert json_mode and '"Alex"' in prompt and "[1] Priya: That's more than we can spend." in prompt
@@ -65,10 +65,10 @@ def test_answers_that_do_not_match_the_transcript_are_dropped():
     assert insights == []
 
 
-def test_no_agreed_next_step_is_reported_with_closing_lines():
-    insights, _ = run({"next_step_agreed": False})
-    assert [i.kind for i in insights] == ["no_next_step"]
-    assert [e.segment_id for e in insights[0].evidence] == [2, 3]
+def test_llm_leaves_next_steps_to_the_rules():
+    insights, llm = run({"next_step_agreed": False, "next_step_line": 3})
+    assert insights == []
+    assert "next_step" not in llm.prompts[0][0]
 
 
 @pytest.mark.parametrize("answer", ["not json at all", "[1, 2]", RuntimeError("model down")])
@@ -78,8 +78,8 @@ def test_broken_model_output_yields_no_insights_instead_of_crashing(answer):
 
 
 def test_json_wrapped_in_chatter_is_accepted():
-    insights, _ = run('Sure! Here it is: {"objections": [{"type": "need", "line": 1}], "next_step_agreed": false} Hope that helps.')
-    assert [i.kind for i in insights] == ["need_objection", "no_next_step"]
+    insights, _ = run('Sure! Here it is: {"objections": [{"type": "pricing", "line": 1}, {"type": "need", "line": 1}]} Hope that helps.')
+    assert [i.kind for i in insights] == ["pricing_objection"]  # "need" is not reported (too noisy)
 
 
 def test_llm_analyzer_requires_an_llm():

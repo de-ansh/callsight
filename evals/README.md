@@ -54,9 +54,31 @@ overfitting. Treat these numbers as a regression check, not a benchmark. Replace
 with labelled real calls (calls 11–30 were added after the rules below were first written; 1–10
 are the original seed set).
 
-### LLM vs rules, on the original 10 calls
+### Rules vs LLM vs the hybrid default, on all 30 calls
 
-Not yet rerun on the 30-call set.
+llama3.2:3b in Docker on CPU. "Hybrid" is the default when an LLM is configured
+(`pipeline.DEFAULT_LLM_ANALYZERS`): rules for talk ratio, competitors, commitments and the next
+step; the model for pricing, timing and authority objections.
+
+| Kind | Rules | LLM alone (first prompt) | Hybrid (final) |
+|---|---|---|---|
+| pricing_objection | 67% / 60% | 89% / 80% | 67% / **80%** |
+| timing_objection | **100%** / 33% | 62% / 56% | 80% / 44% |
+| authority_objection | – / 0% | 67% / 50% | 60% / **75%** |
+| need_objection | – / 0% | 25% / 25% | not reported (11% precision) |
+| competitor_mention | **100% / 100%** | – | **100% / 100%** |
+| action_item | **100% / 95%** | – | **100% / 95%** |
+| no_next_step | **87% / 100%** | 59% / 100% | **87% / 100%** |
+
+What changed between the two LLM columns: the model stopped judging the next step (the rules
+were better: 87% vs 59% precision; the model missed explicit bookings like "Thursday at 10,
+booked"). Removing that part of the prompt also shifted the 3B model's objection answers
+(pricing precision 89% → 67%, authority recall 50% → 75%), with no change to the objection
+instructions. **A 3B model is noisy: any prompt change moves every number, so rerun the eval
+after each one, and prefer a larger model when the hardware allows.** "Need" objections
+scored 11–25% precision across runs, so they are no longer reported.
+
+### LLM vs rules, on the original 10 calls (earlier runs)
 
 | Kind | Rules (then) | `llm_insights`, llama3.2:3b |
 |---|---|---|
@@ -77,7 +99,7 @@ whether a next step was really agreed; the rules are better at rep commitments a
 competitor names. That suggests a hybrid (rules for `competitor_mention` and `action_item`, the
 model for objections and next steps), not a replacement.
 
-### The hybrid (default when an LLM is configured)
+### The first hybrid, on the original 10 calls (superseded by the 30-call table above)
 
 `pipeline.DEFAULT_LLM_ANALYZERS`: rules for talk ratio, competitors and commitments; `llm_insights`
 (which no longer extracts commitments) for objections and the next step. Same model and calls:
