@@ -19,8 +19,11 @@ from pathlib import Path, PurePath
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from fastapi import Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
+import csv
+import io
+
+from fastapi import BackgroundTasks, Depends, FastAPI, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 from pydantic import BaseModel, Field, StringConstraints
 
 from starlette.middleware.sessions import SessionMiddleware
@@ -386,6 +389,80 @@ def _reanalyze(call_id: UUID, principal: Principal, update: SpeakerUpdate | None
         details = {"names": update.names, "rep": rep} if update is not None else {}
         store.audit(conn, principal.org_id, principal.actor, action, str(call_id), details)
     return get_call(call_id, principal)
+
+
+def _drain_reanalysis(org_id: UUID) -> None:
+    """Background task: re-analyze the org's marked calls one at a time until none are left."""
+    settings = Settings.from_env()
+    while True:
+        with store.connect(settings.database_url) as conn:
+            call_id = store.claim_reanalysis(conn, org_id)
+            competitors = store.org_competitors(conn, org_id)
+        if call_id is None:
+            return
+        try:
+            with store.connect(settings.database_url) as conn:
+                loaded = store.load_transcript(conn, org_id, call_id)
+            if loaded is None or loaded[1]["status"] != "done":
+                continue  # deleted or no longer finished since it was marked
+            transcript, row = loaded
+            report = analyze_transcript(transcript, settings=settings, extra_competitors=competitors,
+                                        rep_speaker=row["rep_speaker"])
+            with store.connect(settings.database_url) as conn:
+                store.replace_analysis(conn, call_id, transcript, report, row["rep_speaker"])
+        except Exception:  # one bad call must not stop the rest
+            log.exception("bulk re-analysis failed for call %s", call_id)
+
+
+@app.post("/v1/reanalysis", status_code=202)
+def reanalyze_all(background: BackgroundTasks, principal: Principal = Depends(require_key)) -> dict:
+    """Re-analyze every finished call with the current settings, in the background. Poll GET for progress."""
+    with store.connect(Settings.from_env().database_url) as conn:
+        marked = store.request_reanalysis(conn, principal.org_id)
+        store.audit(conn, principal.org_id, principal.actor, "calls.reanalyze_all", None, {"calls": marked})
+    background.add_task(_drain_reanalysis, principal.org_id)
+    return {"marked": marked, "pending": marked}
+
+
+@app.get("/v1/reanalysis")
+def reanalysis_progress(principal: Principal = Depends(require_key)) -> dict:
+    with store.connect(Settings.from_env().database_url) as conn:
+        return {"pending": store.pending_reanalysis(conn, principal.org_id)}
+
+
+CSV_COLUMNS = ["call_id", "call_name", "created_at", "source", "status", "duration_s",
+               "severity", "kind", "title", "detail", "evidence_time", "evidence_speaker", "evidence_quote"]
+
+
+def _csv_cell(value) -> str:
+    """Spreadsheet-safe text: a cell starting with = + - @ would run as a formula in Excel/Sheets."""
+    text = "" if value is None else str(value)
+    return "'" + text if text[:1] in ("=", "+", "-", "@", "\t", "\r") else text
+
+
+@app.get("/v1/export/calls.csv")
+def export_calls(
+    q: str | None = Query(None, max_length=200), status: Literal["queued", "processing", "done", "failed"] | None = None,
+    days: int | None = Query(None, ge=1, le=3650), principal: Principal = Depends(require_key),
+):
+    """Calls and their insights as CSV, one row per insight; same filters as the call list."""
+    with store.connect(Settings.from_env().database_url) as conn:
+        rows = store.export_rows(conn, principal.org_id, (q or "").strip() or None, status, days)
+        store.audit(conn, principal.org_id, principal.actor, "calls.export", None,
+                    {"rows": len(rows), "q": q, "status": status, "days": days})
+    out = io.StringIO()
+    writer = csv.writer(out)
+    writer.writerow(CSV_COLUMNS)
+    for r in rows:
+        ev = r["evidence"] or []
+        writer.writerow([_csv_cell(v) for v in (
+            r["id"], r["external_id"], r["created_at"].isoformat(), r["source"], r["status"], r["duration_s"],
+            r["severity"], r["kind"], r["title"], r["detail"],
+            "; ".join(f"{int(e['start_s']) // 60:02d}:{int(e['start_s']) % 60:02d}" for e in ev),
+            "; ".join(e["speaker"] for e in ev), " | ".join(e["quote"] for e in ev),
+        )])
+    return Response(out.getvalue(), media_type="text/csv; charset=utf-8",
+                    headers={"Content-Disposition": 'attachment; filename="callsight-calls.csv"'})
 
 
 @app.post("/v1/calls/{call_id}/reanalyze")
