@@ -158,7 +158,7 @@ def test_llm_failure_falls_back_without_losing_insights():
     t = parse("[00:00] Alex: Hi\n[00:10] Priya: The price is too expensive.")
     report = analyze(t, build_analyzers(["objections"]), BrokenLLM())
     assert "pricing_objection" in kinds(report)
-    assert "insight(s) found" in report.summary
+    assert report.summary.startswith("Alex (rep) and Priya talked")
 
 
 def test_insights_sorted_by_severity():
@@ -229,3 +229,26 @@ def test_commitments_need_a_concrete_action():
               "[00:14] Alex: I'm going to set up a sandbox for you.\n[00:20] Priya: Thanks.")
     items = [i for i in analyze(t, build_analyzers(["action_items"])).insights if i.kind == "action_item"]
     assert [i.evidence[0].segment_id for i in items] == [2, 3]
+
+
+
+def test_rule_based_summary_recaps_what_was_found_with_times():
+    report = analyze_text(SAMPLE.read_text(), settings=Settings(competitors=("AcmeCall",)))
+    s = report.summary
+    assert s.startswith("Alex (rep) and Priya talked for about 2 minutes; Alex did 74% of the talking.")
+    assert "Priya raised pricing (00:58) and timing (01:18) concerns and mentioned AcmeCall (00:58)." in s
+    assert "Alex committed to send over a detailed pricing breakdown after this call (01:10)." in s
+    assert s.endswith("No next step was agreed.")
+
+
+def test_summary_grammar_for_one_concern_and_an_agreed_next_step():
+    t = parse("[00:00] Dana: Hi.\n[00:09] Marcus: Honestly the budget is tight.\n"
+              "[00:56] Dana: How about Thursday at 10?\n[01:03] Marcus: Thursday at 10 is good.\n")
+    s = analyze(t, build_analyzers(["objections", "next_step"])).summary
+    assert "Marcus raised a pricing concern (00:09)." in s and s.endswith("A next step was agreed (01:03).")
+
+
+def test_summary_without_findings():
+    t = parse("[00:00] Dana: Hi.\n[00:05] Marcus: Hello, all good here.\n")
+    s = analyze(t, build_analyzers(["objections"])).summary
+    assert s == "Dana (rep) and Marcus talked for under a minute; Dana did 20% of the talking. Marcus raised no objections."
