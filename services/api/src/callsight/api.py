@@ -423,6 +423,13 @@ def put_settings(body: OrgSettings, principal: Principal = Depends(require_key))
     return OrgSettings(competitors=competitors)
 
 
+@app.get("/v1/trends")
+def get_trends(days: int = Query(30, ge=1, le=365), principal: Principal = Depends(require_key)) -> dict:
+    """Patterns across this organization's finished calls in the last `days` days."""
+    with store.connect(Settings.from_env().database_url) as conn:
+        return store.trends(conn, principal.org_id, days)
+
+
 @app.get("/v1/audit")
 def audit_log(
     limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0), principal: Principal = Depends(require_key)

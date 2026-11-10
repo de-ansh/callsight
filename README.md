@@ -118,6 +118,9 @@ curl -s localhost:8000/v1/analyze -H "Authorization: Bearer $KEY" -H 'content-ty
   the rep; saving re-analyzes the call (`PUT /v1/calls/{id}/speakers`). *Re-run analysis*
   (`POST /v1/calls/{id}/reanalyze`) applies the current competitor list, rules and LLM to an
   older call.
+- **Trends.** The *Trends* page (`GET /v1/trends?days=30`) shows patterns across finished calls:
+  how many raised each issue, competitors mentioned, calls per week, the share ending without a
+  next step, and the calls that need attention most.
 - **Deleting data.** `DELETE /v1/calls/{id}` (or *Delete call* in the UI) removes the call, its
   transcript, insights and recording from storage. `CALLSIGHT_RETENTION_DAYS=90` makes the worker
   delete calls older than 90 days, checked hourly. The audit log keeps a record that a deletion

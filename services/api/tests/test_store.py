@@ -245,3 +245,42 @@ def test_speaker_update_validation(client, monkeypatch):
     assert other.put(f"/v1/calls/{call_id}/speakers", json={"rep": "Speaker 1"}).status_code == 404
     assert other.post(f"/v1/calls/{call_id}/reanalyze").status_code == 404
     assert client.post(f"/v1/calls/{uuid.uuid4()}/reanalyze").status_code == 404
+
+
+# --- trends -------------------------------------------------------------------------------
+
+
+def test_trends_count_calls_per_insight_within_the_window(monkeypatch):
+    from fastapi.testclient import TestClient
+
+    from callsight import auth, store
+    from callsight.api import app
+
+    monkeypatch.setenv("CALLSIGHT_DATABASE_URL", DB_URL)
+    name = f"pytest-trends-{uuid.uuid4().hex[:8]}"
+    with store.connect(DB_URL) as conn:
+        key = auth.create_key(conn, name, "t")
+    c = TestClient(app, headers={"authorization": f"Bearer {key}"})
+    c.put("/v1/settings", json={"competitors": ["Gong"]})
+    pricey = "[00:00] Alex: Hi\n[00:05] Priya: The price is too expensive. Too expensive!\n[00:09] Priya: We use Gong.\n"
+    booked = "[00:00] Alex: Hi\n[00:05] Priya: The budget is tight.\n[00:09] Alex: Let's meet Monday at 4.\n"
+    old = "[00:00] Alex: Hi\n[00:05] Priya: The price is way too high.\n"
+    ids = [c.post("/v1/analyze", json={"transcript": t}).json()["id"] for t in (pricey, booked, old)]
+    with store.connect(DB_URL) as conn, conn.transaction():
+        conn.execute("UPDATE calls SET created_at = now() - interval '60 days' WHERE id = %s", (ids[2],))
+
+    t = c.get("/v1/trends", params={"days": 30}).json()
+    assert t["totals"]["calls"] == 2                       # the 60-day-old call is outside the window
+    kinds = {k["kind"]: k["calls"] for k in t["kinds"]}
+    assert kinds["pricing_objection"] == 2                 # counted per call, not per line
+    assert t["competitors"] == [{"name": "Gong", "calls": 1}]
+    assert t["totals"]["calls_without_next_step"] == 1    # only 'booked' agreed a time
+    assert sum(w["calls"] for w in t["weekly"]) == 2
+    assert {r["id"] for r in t["needs_attention"]} <= set(ids[:2])
+    assert c.get("/v1/trends", params={"days": 90}).json()["totals"]["calls"] == 3
+    assert c.get("/v1/trends", params={"days": 0}).status_code == 422
+
+
+def test_trends_are_per_org(client, monkeypatch):
+    other, _ = _other_org_client(monkeypatch)
+    assert other.get("/v1/trends").json()["totals"]["calls"] == 0

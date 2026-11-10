@@ -115,6 +115,47 @@ def audit(
         )
 
 
+def trends(conn: psycopg.Connection, org_id: UUID, days: int) -> dict[str, Any]:
+    """Aggregates over finished calls created in the last `days` days, for the Trends page."""
+    window = ("c.org_id = %s AND c.status = 'done' AND c.created_at >= now() - make_interval(days => %s)", (org_id, days))
+    totals = conn.execute(
+        "SELECT count(*) AS calls,"
+        " count(*) FILTER (WHERE EXISTS (SELECT 1 FROM insights i WHERE i.call_id = c.id AND i.kind = 'no_next_step'))"
+        "   AS calls_without_next_step,"
+        " count(*) FILTER (WHERE EXISTS (SELECT 1 FROM insights i WHERE i.call_id = c.id AND i.severity = 'high'))"
+        "   AS calls_with_high"
+        f" FROM calls c WHERE {window[0]}", window[1],
+    ).fetchone()
+    # Each kind counted once per call: "how many calls raised a pricing objection", not how many lines.
+    kinds = conn.execute(
+        "SELECT i.kind, count(DISTINCT c.id) AS calls FROM calls c JOIN insights i ON i.call_id = c.id"
+        f" WHERE {window[0]} AND i.kind NOT IN ('next_step', 'action_item')"
+        " GROUP BY i.kind ORDER BY calls DESC, i.kind", window[1],
+    ).fetchall()
+    competitors = conn.execute(
+        "SELECT substring(i.title FROM 'Competitor mentioned: (.*)') AS name, count(DISTINCT c.id) AS calls"
+        " FROM calls c JOIN insights i ON i.call_id = c.id"
+        f" WHERE {window[0]} AND i.kind = 'competitor_mention'"
+        " GROUP BY name ORDER BY calls DESC, name", window[1],
+    ).fetchall()
+    weekly = conn.execute(
+        "SELECT date_trunc('week', c.created_at)::date AS week, count(*) AS calls,"
+        " count(*) FILTER (WHERE EXISTS (SELECT 1 FROM insights i WHERE i.call_id = c.id AND i.severity = 'high'))"
+        "   AS calls_with_high"
+        f" FROM calls c WHERE {window[0]} GROUP BY week ORDER BY week", window[1],
+    ).fetchall()
+    attention = conn.execute(
+        "SELECT c.id, c.external_id, c.created_at,"
+        " count(*) FILTER (WHERE i.severity = 'high') AS high_count,"
+        " count(*) FILTER (WHERE i.severity = 'medium') AS medium_count"
+        f" FROM calls c JOIN insights i ON i.call_id = c.id WHERE {window[0]}"
+        " GROUP BY c.id HAVING count(*) FILTER (WHERE i.severity IN ('high', 'medium')) > 0"
+        " ORDER BY high_count DESC, medium_count DESC, c.created_at DESC LIMIT 10", window[1],
+    ).fetchall()
+    return {"days": days, "totals": totals, "kinds": kinds, "competitors": competitors,
+            "weekly": weekly, "needs_attention": attention}
+
+
 def list_audit(conn: psycopg.Connection, org_id: UUID, limit: int, offset: int) -> list[dict[str, Any]]:
     return conn.execute(
         "SELECT actor, action, target, details, at FROM audit_log WHERE org_id = %s"
