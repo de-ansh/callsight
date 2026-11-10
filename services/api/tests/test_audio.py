@@ -181,15 +181,22 @@ def test_no_diarization_turns_means_one_speaker():
 
 
 def test_diarization_misconfiguration_fails_loudly(monkeypatch):
+    """Runs with or without the asr/diarize extras installed (CI has neither), never skipped."""
+    import importlib.util
+    import sys
+    import types
+
     from callsight.providers.whisper_asr import WhisperASR
 
-    import faster_whisper  # real constructor, but no Whisper download
-    monkeypatch.setattr(faster_whisper, "WhisperModel", lambda *a, **k: object())
+    monkeypatch.setitem(sys.modules, "faster_whisper", types.SimpleNamespace(WhisperModel=lambda *a, **k: object()))
     with pytest.raises(ValueError, match="unknown CALLSIGHT_DIARIZATION"):
         WhisperASR(diarization="magic")
-    pytest.importorskip("pyannote.audio")
-    import huggingface_hub
+    if importlib.util.find_spec("pyannote") is None:
+        with pytest.raises(RuntimeError, match="diarize"):
+            WhisperASR(diarization="pyannote", hf_token="x")
+    else:
+        import huggingface_hub
 
-    monkeypatch.setattr(huggingface_hub, "get_token", lambda: None)  # no `hf auth login` token either
-    with pytest.raises(RuntimeError, match="HF_TOKEN"):
-        WhisperASR(diarization="pyannote", hf_token="")
+        monkeypatch.setattr(huggingface_hub, "get_token", lambda: None)  # no `hf auth login` token either
+        with pytest.raises(RuntimeError, match="HF_TOKEN"):
+            WhisperASR(diarization="pyannote", hf_token="")
