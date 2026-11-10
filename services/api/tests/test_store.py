@@ -284,3 +284,60 @@ def test_trends_count_calls_per_insight_within_the_window(monkeypatch):
 def test_trends_are_per_org(client, monkeypatch):
     other, _ = _other_org_client(monkeypatch)
     assert other.get("/v1/trends").json()["totals"]["calls"] == 0
+
+
+# --- bulk re-analysis and export ------------------------------------------------------------
+
+
+def _fresh_org_client(monkeypatch, prefix):
+    from fastapi.testclient import TestClient
+
+    from callsight import auth, store
+    from callsight.api import app
+
+    monkeypatch.setenv("CALLSIGHT_DATABASE_URL", DB_URL)
+    with store.connect(DB_URL) as conn:
+        key = auth.create_key(conn, f"{prefix}-{uuid.uuid4().hex[:8]}", "t")
+    return TestClient(app, headers={"authorization": f"Bearer {key}"})
+
+
+def test_bulk_reanalysis_updates_every_finished_call(monkeypatch):
+    c = _fresh_org_client(monkeypatch, "pytest-bulk")
+    said = "[00:00] Alex: Hi\n[00:05] Priya: We also talk to Blorpcall.\n"
+    ids = [c.post("/v1/analyze", json={"call_id": f"b{i}", "transcript": said}).json()["id"] for i in range(3)]
+    c.put("/v1/settings", json={"competitors": ["Blorpcall"]})
+    res = c.post("/v1/reanalysis")  # TestClient runs the background task before returning
+    assert res.status_code == 202 and res.json()["marked"] == 3
+    assert c.get("/v1/reanalysis").json() == {"pending": 0}
+    for i in ids:
+        assert any(x["title"] == "Competitor mentioned: Blorpcall" for x in c.get(f"/v1/calls/{i}").json()["insights"])
+    assert any(r["action"] == "calls.reanalyze_all" and r["details"] == {"calls": 3} for r in c.get("/v1/audit").json())
+
+
+def test_csv_export_rows_filters_and_formula_safety(monkeypatch):
+    import csv
+    import io
+
+    c = _fresh_org_client(monkeypatch, "pytest-export")
+    c.post("/v1/analyze", json={"call_id": "=HYPERLINK(\"http://evil\")", "transcript":
+                                "[00:00] Alex: Hi\n[00:05] Priya: The price is too expensive.\n"})
+    c.post("/v1/analyze", json={"call_id": "quiet-call", "transcript": "[00:00] Alex: Hi\n[00:04] Priya: Hello.\n"})
+    res = c.get("/v1/export/calls.csv")
+    assert res.status_code == 200 and res.headers["content-type"].startswith("text/csv")
+    assert "attachment" in res.headers["content-disposition"]
+    rows = list(csv.DictReader(io.StringIO(res.text)))
+    evil = [r for r in rows if "HYPERLINK" in r["call_name"]]
+    assert evil and all(r["call_name"].startswith("'=") for r in evil)          # defused for spreadsheets
+    pricing = next(r for r in evil if r["kind"] == "pricing_objection")
+    assert pricing["evidence_time"] == "00:05" and pricing["evidence_speaker"] == "Priya"
+    assert "too expensive" in pricing["evidence_quote"]
+    assert {r["call_name"] for r in csv.DictReader(io.StringIO(c.get("/v1/export/calls.csv", params={"q": "quiet"}).text))} == {"quiet-call"}
+    assert any(r["action"] == "calls.export" for r in c.get("/v1/audit").json())
+
+
+def test_export_and_reanalysis_are_per_org(client, monkeypatch):
+    marker = f"export-secret-{uuid.uuid4().hex[:6]}"
+    client.post("/v1/analyze", json={"call_id": marker, "transcript": TRANSCRIPT})
+    other = _fresh_org_client(monkeypatch, "pytest-other-export")
+    assert marker not in other.get("/v1/export/calls.csv").text
+    assert other.post("/v1/reanalysis").json()["marked"] == 0
