@@ -140,7 +140,7 @@ finds who spoke when and each transcribed word is given to the speaker talking a
 3. Set `CALLSIGHT_DIARIZATION=pyannote` and `HF_TOKEN=<token>`, then start the worker.
 
 Speakers come out as "Speaker 1", "Speaker 2", ... in order of first speaking; rename them
-and mark the rep on the call page. Diarization is slow on CPU (roughly the length of the call).
+and mark the rep on the call page. Diarization adds processing time on CPU on top of transcription.
 
 ### Sending calls from another system (webhook)
 
