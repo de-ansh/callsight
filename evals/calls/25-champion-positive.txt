@@ -1,0 +1,9 @@
+# An enthusiastic champion; no objections.
+# no_next_step: false
+[00:00] Ivan: Thanks for setting this up, Zoe.
+[00:03] Zoe: Of course. My team has been asking for something like this for months.
+[00:09] Ivan: What would a successful pilot look like for you?
+[00:13] Zoe: Every new rep gets feedback on their first ten calls.
+[00:18] Ivan: We can do that. I'll draft a pilot plan by Thursday. {action_item}
+[00:23] Zoe: Great, let's review it Friday at 9.
+[00:27] Ivan: Friday at 9, see you then.

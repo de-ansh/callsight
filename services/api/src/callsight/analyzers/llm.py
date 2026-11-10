@@ -1,7 +1,8 @@
-"""LLM-powered analyzer: objection types, agreed next step, sentiment shifts.
+"""LLM-powered analyzer: objection types and sentiment shifts.
 
-Rep commitments are left to the rule-based action_items analyzer, which measured better
-(evals/README.md).
+Rep commitments and the next step are left to the rule-based analyzers, which measured better
+on the 30-call eval set (evals/README.md); the model is used where it wins: objections said
+without keywords.
 
 The model sees numbered transcript lines and must cite line numbers. Its answer is treated
 as untrusted: citations to lines that don't exist and objections attributed to the rep are
@@ -26,8 +27,9 @@ OBJECTION_TYPES = {
     "pricing": "Pricing or budget concern raised",
     "timing": "Timing or priority concern raised",
     "authority": "Decision needs someone else's approval",
-    "need": "Prospect questions the need or value",
 }
+# The prompt still asks for "need" objections (changing the prompt shifts the small model's other
+# answers), but they are not reported: precision was 11-25% on the 30-call eval set.
 MAX_PROMPT_LINES = 400
 
 # No concrete example values: small models copy example line numbers and booleans into their
@@ -43,13 +45,10 @@ Read the whole transcript, then report only what is actually said in it:
   pricing (cost, budget, discounts), timing (not now, later, delays), authority (needs approval
   from someone else), need (doubts they need it or see the value). Do NOT count statements that
   something is NOT a concern, or a polite "no thanks" answering "anything else?".
-- next_step_agreed: true only if both sides agreed a concrete next meeting or action with a time.
 - sentiment_shifts: lines where the prospect's attitude clearly turns positive or negative.
 
 Answer with one JSON object with exactly these keys:
 - "objections": list of objects with "type" (pricing, timing, authority or need) and "line" (the line number)
-- "next_step_agreed": true or false
-- "next_step_line": the line number where the next step was agreed, or null
 - "sentiment_shifts": list of objects with "line", "direction" (positive or negative) and "note"
 Use empty lists when there is nothing to report. Every line number must be one shown in the transcript.
 """
@@ -104,18 +103,6 @@ class LLMInsightAnalyzer(_Base):
                 kind=f"{kind}_objection", title=OBJECTION_TYPES[kind], severity="medium",
                 evidence=[_evidence(by_id[i]) for i in sorted(lines)],
             ))
-
-        agreed = data.get("next_step_agreed") is True
-        seg = by_id.get(_int(data.get("next_step_line")))
-        if agreed and seg:
-            insights.append(Insight(kind="next_step", title="Next step agreed", evidence=[_evidence(seg)]))
-        elif not agreed and transcript.segments:
-            insights.append(Insight(
-                kind="no_next_step", title="No clear next step agreed", severity="high",
-                detail="The model found no concrete, agreed next meeting or action.",
-                evidence=[_evidence(s) for s in transcript.segments[-2:]],
-            ))
-        # agreed but without a valid line: no claim either way rather than an uncited one
 
         for item in data.get("sentiment_shifts") or []:
             seg = by_id.get(_int(item.get("line"))) if isinstance(item, dict) else None

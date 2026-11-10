@@ -1,0 +1,10 @@
+# Several objections in one call, including one split over two turns.
+# no_next_step: true
+[00:00] Chris: What would stop you from moving forward?
+[00:04] Dana: A few things. First, the cost is higher than what we budgeted. {pricing_objection}
+[00:10] Chris: Okay, what else?
+[00:12] Dana: Second, my director would have to approve any new tool, {authority_objection}
+[00:17] Dana: and she's out until next month. {timing_objection}
+[00:21] Chris: Got it. Anything else?
+[00:24] Dana: Not right now, thanks.
+[00:27] Chris: Thanks Dana.

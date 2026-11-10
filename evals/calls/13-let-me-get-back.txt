@@ -1,0 +1,9 @@
+# Commitments phrased without "I'll"/"I will".
+# no_next_step: false
+[00:00] Priyanka: Thanks for the detailed questions, Tom.
+[00:04] Tom: The main gap is the Zendesk integration.
+[00:09] Priyanka: Let me get back to you by Friday with the integration timeline. {action_item}
+[00:15] Tom: That works.
+[00:18] Priyanka: And I'm going to set up a sandbox for your team this week. {action_item}
+[00:24] Tom: Great. Let's review it together next Wednesday at 11.
+[00:29] Priyanka: Wednesday at 11, booked.

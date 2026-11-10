@@ -1,0 +1,6 @@
+# The rep uses "I'll" in figures of speech that are not commitments.
+# no_next_step: false
+[00:00] Leo: I'll be honest, I wasn't sure this would be a fit at first.
+[00:05] Sara: Me neither.
+[00:08] Leo: I'll admit the reporting is the strongest part. Shall we do a deeper demo Friday at 2?
+[00:14] Sara: Friday at 2 is good.

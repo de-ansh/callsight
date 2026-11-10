@@ -1,0 +1,7 @@
+# A real timing objection followed by a polite close to "anything else?".
+# no_next_step: true
+[00:00] Theo: Where do things stand on your side?
+[00:04] Ava: We're in a hiring freeze, so nothing new until the summer. {timing_objection}
+[00:10] Theo: Understood. Anything else I can help with today?
+[00:14] Ava: Not right now, thanks.
+[00:17] Theo: Okay, take care.

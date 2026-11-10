@@ -1,0 +1,5 @@
+# Budget and timing in one sentence: both objections on the same line.
+# no_next_step: true
+[00:00] Sam: Is this something you'd want to move on?
+[00:04] Lena: There's simply no budget left this year, so it would have to wait until next year. {pricing_objection} {timing_objection}
+[00:11] Sam: Understood. Thanks for being straightforward.

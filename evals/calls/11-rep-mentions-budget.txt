@@ -1,0 +1,8 @@
+# The rep talks about price and budget; only the prospect's lines can be objections.
+# no_next_step: false
+[00:00] Jordan: Before we dig in, the price for your team would be about 9,000 a year, and that fits most budgets we see.
+[00:09] Mia: That sounds reasonable, honestly. What I care about is the CRM sync.
+[00:16] Jordan: It syncs every call note to Salesforce within a minute.
+[00:24] Mia: Great. Can you show my ops lead on Thursday at 3?
+[00:29] Jordan: Thursday at 3 works. I'll send the invite and a short agenda. {action_item}
+[00:34] Mia: Perfect.

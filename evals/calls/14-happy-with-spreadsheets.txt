@@ -1,0 +1,7 @@
+# A need objection without the word "need"; nothing is scheduled.
+# no_next_step: true
+[00:00] Lucas: Thanks for joining, Ines. How do you review calls today?
+[00:05] Ines: Honestly, a shared spreadsheet works fine for us. We've used it for three years. {need_objection}
+[00:13] Lucas: What happens when the team grows?
+[00:17] Ines: We're not planning to grow the team this year.
+[00:21] Lucas: Fair enough. Thanks for your time.

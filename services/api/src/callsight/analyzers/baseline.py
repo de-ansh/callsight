@@ -24,16 +24,35 @@ _TIMING = re.compile(r"\b(next quarter|next year|not a priority|not right now|ba
 _ANYTHING_ELSE = re.compile(r"\banything else\b[^.!]*\?", re.I)
 _POLITE_NO = re.compile(r"^\W*(no,?\s*)?not right now\b[\s,.!]*(thanks?|thank you)?\b[^?]{0,40}$", re.I)
 _NEXT_STEP = re.compile(
-    r"\b(next steps?|follow[- ]up|schedule|calendar|send (?:you|over)|book a|set up a|let'?s meet|demo on)\b",
+    r"\b(next steps?|follow[- ]up|schedule|calendar|send (?:you|over)|book a|set up a|let'?s meet|demo on"
+    r"|invite|booked|pencil(?:ed)? in)\b"
+    # a concrete time: "Monday at 4", "Friday at 2", "the 20th at noon", "March 10", "January 15"
+    r"|\b(?:mon|tues|wednes|thurs|fri)day\b[^.?!]{0,12}?\b(?:at\s+\d|\d{1,2}\s*(?:am|pm)|noon|morning|afternoon)"
+    r"|\bthe\s+\d{1,2}(?:st|nd|rd|th)\b"
+    r"|\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?\b",
     re.I,
 )
-_COMMITMENT = re.compile(r"\b(I'll|I will)\b[^.?!]*[.?!]?", re.I)
+# A turn that turns a proposal down: "No, I don't think so." / "No thanks."
+_DECLINE = re.compile(r"^\W*no\b(?![- ]?(?:problem|worries))", re.I)
+# Promises of a concrete action; "I'll be honest" or "Let me tell you" are not commitments.
+_COMMITMENT = re.compile(
+    r"\b(?:I'll|I will|let me|I'm going to|I am going to)\s+(?:\w+\s+){0,2}?"
+    r"(?:send|get back|follow up|set up|share|draft|prepare|schedule|book|put together|email|loop in|introduce|have)\b"
+    r"[^.?!]*[.?!]?",
+    re.I,
+)
 
 
 def _name_pattern(name: str) -> re.Pattern:
     """Match a name whatever the spacing: speech-to-text writes "AcmeCall" as "Acme call" or "ACME-Call"."""
     parts = re.findall(r"[A-Z]+(?![a-z])|[A-Z]?[a-z]+|\d+", name) or [name]
     return re.compile(r"\b" + r"[\s.\-]{0,2}".join(re.escape(p) for p in parts) + r"\b", re.I)
+
+
+def _declined(transcript: Transcript, segment: Segment) -> bool:
+    """A proposed next step that the other side answers with "No...": not a next step."""
+    following = [s for s in transcript.segments[segment.id + 1:] if s.speaker != segment.speaker]
+    return bool(following and _DECLINE.search(following[0].text))
 
 
 def _is_polite_close(transcript: Transcript, segment: Segment) -> bool:
@@ -149,7 +168,7 @@ class NextStepAnalyzer(_Base):
         segments = transcript.segments
         closing_count = max(3, math.ceil(len(segments) * 0.25))
         closing = segments[-closing_count:]
-        hits = [s for s in closing if _NEXT_STEP.search(s.text)]
+        hits = [s for s in closing if _NEXT_STEP.search(s.text) and not _declined(transcript, s)]
         if hits:
             return [
                 Insight(

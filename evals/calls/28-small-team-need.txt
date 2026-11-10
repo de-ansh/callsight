@@ -1,0 +1,7 @@
+# A need objection based on team size, and a declined follow-up.
+# no_next_step: true
+[00:00] Aria: Can I show you how coaching works?
+[00:04] Ben: Honestly, with two reps I can just sit in on their calls. I don't see us using this. {need_objection}
+[00:11] Aria: Would a follow-up in a few months make sense?
+[00:15] Ben: No, I don't think so. Thanks though.
+[00:19] Aria: Understood, thanks Ben.
