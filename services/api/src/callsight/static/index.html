@@ -11,6 +11,7 @@
     --high: #b42318; --high-soft: #fdecea; --medium: #9a5b06; --medium-soft: #fdf3e2;
     --low: #3f6212; --low-soft: #edf5e3; --info: #475467; --info-soft: #eef0f3;
     --mark: #fff1b8; --spk-a: #2f5bd3; --spk-b: #b5179e;
+    --bar: #2f5bd3; --grid: #ecebe6;  /* chart mark: validated vs the light panel (dataviz validator) */
     --radius: 10px; --shadow: 0 1px 2px rgba(20, 20, 18, .05);
   }
   @media (prefers-color-scheme: dark) {
@@ -20,6 +21,7 @@
       --high: #ff8a80; --high-soft: #3a1f1d; --medium: #f5b955; --medium-soft: #372b17;
       --low: #a3d97a; --low-soft: #223019; --info: #b8c0cc; --info-soft: #262a30;
       --mark: #4a3f10; --spk-a: #8aa8ff; --spk-b: #f08bdc; --shadow: none;
+      --bar: #6b8ff2; --grid: #2a2a27;  /* the UI accent #8aa8ff is too light for marks on dark */
     }
   }
   * { box-sizing: border-box; }
@@ -144,6 +146,34 @@
   .spk-row label { margin: 0; display: flex; gap: 6px; align-items: center; color: var(--text); font-size: 13px; white-space: nowrap; }
   .row-actions { display: flex; gap: 10px; align-items: center; margin-top: 8px; flex-wrap: wrap; }
 
+  /* ----- trends */
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+  .tile .num { font-size: 30px; font-weight: 700; line-height: 1.1; font-variant-numeric: tabular-nums; }
+  .tile .lbl { color: var(--muted); font-size: 13px; }
+  .charts { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 16px; }
+  .chart-head { display: grid; grid-template-columns: 1fr auto; column-gap: 8px; margin-bottom: 12px; }
+  .chart-head h2 { margin: 0; }
+  .chart-head .meta { grid-column: 1; }
+  .chart-head .linkish { grid-column: 2; grid-row: 1; }
+  .hbar { display: grid; grid-template-columns: minmax(140px, 45%) 1fr; gap: 2px 10px; align-items: center; }
+  .hbar .name { font-size: 13px; color: var(--text); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .hbar .track { display: flex; align-items: center; gap: 8px; height: 22px; outline-offset: 1px; }
+  .hbar .fill { height: 14px; background: var(--bar); border-radius: 0 4px 4px 0; min-width: 2px; }
+  .hbar .val { font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+  .cols { display: flex; align-items: flex-end; gap: 2px; height: 140px; border-bottom: 1px solid var(--grid);
+          background-image: linear-gradient(var(--grid) 1px, transparent 1px); background-size: 100% 35px; }
+  .cols .col { flex: 1; display: flex; flex-direction: column; justify-content: flex-end; align-items: center;
+               height: 100%; outline-offset: 1px; }
+  .cols .col span { display: block; width: 100%; max-width: 28px; background: var(--bar); border-radius: 4px 4px 0 0; min-height: 2px; }
+  .cols-axis { display: flex; gap: 2px; font-size: 11px; color: var(--muted); margin-top: 4px; }
+  .cols-axis span { flex: 1; text-align: center; overflow: hidden; white-space: nowrap; }
+  .tooltip { position: fixed; z-index: 20; pointer-events: none; background: var(--text); color: var(--bg);
+             font-size: 12px; padding: 5px 8px; border-radius: 6px; max-width: 240px; }
+  .seg-ctl { display: inline-flex; border: 1px solid var(--line); border-radius: 8px; overflow: hidden; }
+  .seg-ctl button { border: 0; border-radius: 0; background: var(--panel); color: var(--muted); padding: 6px 12px; font-size: 13px; }
+  .seg-ctl button[aria-pressed="true"] { background: var(--accent-soft); color: var(--text); font-weight: 600; }
+  .linkish { border: 0; background: none; color: var(--accent); font-size: 12px; padding: 0; white-space: nowrap; align-self: start; }
+
   /* ----- settings, sign-in */
   .narrow { max-width: 640px; }
   .help { color: var(--muted); font-size: 13px; margin: 4px 0 0; }
@@ -154,6 +184,7 @@
   <a class="brand" href="#/"><span class="dot" aria-hidden="true"></span>Callsight</a>
   <nav aria-label="Main">
     <a href="#/" data-nav="calls">Calls</a>
+    <a href="#/trends" data-nav="trends">Trends</a>
     <a href="#/audit" data-nav="audit">Audit log</a>
     <a href="#/settings" data-nav="settings">Settings</a>
   </nav>
@@ -501,6 +532,104 @@ async function showCall(id) {
         audio ? el("div", { class: "player" }, audio) : null, transcript)));
 }
 
+// ---------------------------------------------------------------- trends
+const KIND_LABEL = {
+  pricing_objection: "Pricing objection", timing_objection: "Timing objection",
+  authority_objection: "Needs someone else's approval", need_objection: "Questions the need",
+  competitor_mention: "Competitor mentioned", no_next_step: "No next step", talk_ratio: "Rep talked too much",
+  sentiment_shift: "Sentiment shift",
+};
+const tip = el("div", { class: "tooltip", role: "tooltip", hidden: true });
+document.body.append(tip);
+function attachTip(node, text) {
+  const show = e => {
+    tip.textContent = text; tip.hidden = false;
+    const r = node.getBoundingClientRect();
+    const x = e && e.clientX ? e.clientX : r.left + r.width / 2, y = e && e.clientY ? e.clientY : r.top;
+    tip.style.left = `${Math.min(x + 12, innerWidth - 250)}px`; tip.style.top = `${Math.max(8, y - 34)}px`;
+  };
+  node.addEventListener("mousemove", show); node.addEventListener("focus", () => show());
+  node.addEventListener("mouseleave", () => (tip.hidden = true)); node.addEventListener("blur", () => (tip.hidden = true));
+}
+
+// One chart card: a title, the chart, and a "table" toggle so the numbers are readable without the bars.
+function chartCard(title, subtitle, chart, rows, cols) {
+  const table = el("table", { hidden: true },
+    el("thead", {}, el("tr", {}, ...cols.map(c => el("th", {}, c[0])))),
+    el("tbody", {}, ...rows.map(r => el("tr", {}, ...cols.map(c => el("td", {}, c[1](r)))))));
+  const toggle = el("button", { class: "linkish", type: "button", onclick: () => {
+    table.hidden = !table.hidden; chart.hidden = !table.hidden; toggle.textContent = table.hidden ? "Show as table" : "Show as chart";
+  } }, "Show as table");
+  return el("section", { class: "panel", "aria-label": title },
+    el("div", { class: "chart-head" }, el("h2", {}, title), el("span", { class: "meta" }, subtitle), toggle),
+    rows.length ? chart : el("p", { class: "empty" }, "Nothing in this period."), rows.length ? table : null);
+}
+
+function hbars(rows, label, value, total) {
+  const max = Math.max(1, ...rows.map(value));
+  return el("div", { class: "hbar" }, ...rows.flatMap(r => {
+    const v = value(r), pct = total ? ` (${Math.round(100 * v / total)}%)` : "";
+    const track = el("div", { class: "track", tabindex: "0", role: "img", "aria-label": `${label(r)}: ${v} calls${pct}` },
+      el("div", { class: "fill", style: `width:${(100 * v / max).toFixed(1)}%` }), el("span", { class: "val" }, `${v}${pct}`));
+    attachTip(track, `${label(r)}: ${v} call${v === 1 ? "" : "s"}${pct}`);
+    return [el("div", { class: "name", title: label(r) }, label(r)), track];
+  }));
+}
+
+function columns(rows) {
+  const max = Math.max(1, ...rows.map(r => r.calls));
+  const wk = d => new Date(d + "T00:00:00").toLocaleDateString(undefined, { month: "short", day: "numeric" });
+  const bars = el("div", { class: "cols" }, ...rows.map(r => {
+    const col = el("div", { class: "col", tabindex: "0", role: "img",
+      "aria-label": `Week of ${wk(r.week)}: ${r.calls} calls, ${r.calls_with_high} with a high-severity flag` },
+      el("span", { style: `height:${(100 * r.calls / max).toFixed(1)}%` }));
+    attachTip(col, `Week of ${wk(r.week)}: ${r.calls} call${r.calls === 1 ? "" : "s"}, ${r.calls_with_high} with a high flag`);
+    return col;
+  }));
+  // Label the first, middle and last week only; every column has its own tooltip.
+  const keep = new Set([0, Math.floor((rows.length - 1) / 2), rows.length - 1]);
+  return el("div", {}, bars, el("div", { class: "cols-axis", "aria-hidden": "true" },
+    ...rows.map((r, i) => el("span", {}, keep.has(i) ? wk(r.week) : ""))));
+}
+
+let trendDays = 30;
+async function showTrends() {
+  clearTimeout(pollTimer);
+  setNav("trends");
+  let t;
+  try { t = await api(`/v1/trends?days=${trendDays}`); }
+  catch (e) { if (!handle(e)) app.replaceChildren(el("p", { class: "error" }, e.message)); return; }
+  const n = t.totals.calls;
+  const pct = v => (n ? `${Math.round(100 * v / n)}%` : "–");
+  const period = el("div", { class: "seg-ctl", role: "group", "aria-label": "Period" },
+    ...[7, 30, 90].map(d => el("button", { type: "button", "aria-pressed": String(d === trendDays),
+      onclick: () => { trendDays = d; showTrends(); } }, `${d} days`)));
+  const tile = (num, lbl) => el("div", { class: "panel tile" }, el("div", { class: "num" }, num), el("div", { class: "lbl" }, lbl));
+  const kinds = t.kinds.filter(k => KIND_LABEL[k.kind]);
+  app.replaceChildren(
+    el("div", { class: "page-head" }, el("h1", {}, "Trends"), el("span", { class: "count" }, `finished calls, last ${t.days} days`),
+      el("span", { class: "spacer" }), period),
+    el("div", { class: "tiles" },
+      tile(String(n), "calls analyzed"),
+      tile(pct(t.totals.calls_without_next_step), `ended without a next step (${t.totals.calls_without_next_step})`),
+      tile(pct(t.totals.calls_with_high), `had a high-severity flag (${t.totals.calls_with_high})`)),
+    el("div", { class: "charts" },
+      chartCard("What came up", "calls with each issue", hbars(kinds, r => KIND_LABEL[r.kind], r => r.calls, n), kinds,
+        [["Issue", r => KIND_LABEL[r.kind]], ["Calls", r => r.calls], ["Share", r => pct(r.calls)]]),
+      chartCard("Competitors mentioned", "calls naming each", hbars(t.competitors, r => r.name, r => r.calls, n), t.competitors,
+        [["Competitor", r => r.name], ["Calls", r => r.calls]]),
+      chartCard("Calls per week", "hover a week for detail", columns(t.weekly), t.weekly,
+        [["Week of", r => r.week], ["Calls", r => r.calls], ["With a high flag", r => r.calls_with_high]]),
+      el("section", { class: "panel", "aria-label": "Needs attention" },
+        el("div", { class: "chart-head" }, el("h2", {}, "Needs attention"), el("span", { class: "meta" }, "most flags first")),
+        t.needs_attention.length ? el("table", {}, el("tbody", {}, ...t.needs_attention.map(r => el("tr", {},
+          el("td", {}, el("a", { href: `#/calls/${r.id}` }, r.external_id || short(r.id))),
+          el("td", {}, r.high_count ? chip("high", `${r.high_count} high`) : null, r.medium_count ? chip("medium", `${r.medium_count} med`) : null),
+          el("td", { class: "meta", style: "white-space: nowrap" },
+            new Date(r.created_at).toLocaleDateString(undefined, { day: "numeric", month: "short" }))))))
+          : el("p", { class: "empty" }, "Nothing flagged in this period."))));
+}
+
 // ---------------------------------------------------------------- audit
 async function showAudit() {
   clearTimeout(pollTimer);
@@ -572,6 +701,7 @@ async function route() {
   const m = location.hash.match(/^#\/calls\/([^/]+)$/);
   if (m) showCall(decodeURIComponent(m[1]));
   else if (location.hash === "#/audit") showAudit();
+  else if (location.hash === "#/trends") showTrends();
   else if (location.hash === "#/settings") showSettings();
   else showCalls();
 }
