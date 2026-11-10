@@ -188,3 +188,56 @@ def test_upload_names_reach_the_stored_call(monkeypatch, client):
     assert call["speakers"] == ["Priya", "Alex"] and call["rep_speaker"] == "Alex"
     # Priya is the customer, so her line counts as a pricing objection.
     assert any(i["kind"] == "pricing_objection" and i["evidence"][0]["speaker"] == "Priya" for i in call["insights"])
+
+
+def test_assign_speakers_follows_who_was_talking():
+    from callsight.providers.whisper_asr import assign_speakers
+
+    words = [(0.0, 0.4, " Hi"), (0.5, 0.9, " there."),            # SPEAKER_07 talks first
+             (1.2, 1.6, " Hello!"),                                # SPEAKER_02 answers (no pause needed)
+             (1.7, 2.0, " Price"), (2.1, 2.5, " is"), (2.6, 3.0, " high."),
+             (9.0, 9.4, " Okay.")]                                 # back to SPEAKER_07 after a gap in turns
+    turns = [(0.0, 1.0, "SPEAKER_07"), (1.1, 3.2, "SPEAKER_02"), (8.8, 9.6, "SPEAKER_07")]
+    assert assign_speakers(words, turns) == [
+        (0.0, "Speaker 1", "Hi there."),
+        (1.2, "Speaker 2", "Hello! Price is high."),
+        (9.0, "Speaker 1", "Okay."),
+    ]
+
+
+def test_words_between_turns_go_to_the_nearest_speaker_and_pauses_split_turns():
+    from callsight.providers.whisper_asr import assign_speakers
+
+    words = [(0.0, 0.3, " One"), (1.05, 1.15, " two"), (5.0, 5.3, " three")]  # 'two' falls in a gap
+    turns = [(0.0, 1.0, "A"), (1.3, 6.0, "B")]
+    assert assign_speakers(words, turns) == [(0.0, "Speaker 1", "One two"), (5.0, "Speaker 2", "three")]
+    assert assign_speakers([(0.0, 0.3, " a"), (3.0, 3.3, " b")], [(0.0, 9.0, "A")]) == [
+        (0.0, "Speaker 1", "a"), (3.0, "Speaker 1", "b")]  # same speaker, but a pause starts a new turn
+
+
+def test_no_diarization_turns_means_one_speaker():
+    from callsight.providers.whisper_asr import assign_speakers
+
+    assert assign_speakers([(0.0, 0.3, " Hi")], []) == [(0.0, "Speaker 1", "Hi")]
+
+
+def test_diarization_misconfiguration_fails_loudly(monkeypatch):
+    """Runs with or without the asr/diarize extras installed (CI has neither), never skipped."""
+    import importlib.util
+    import sys
+    import types
+
+    from callsight.providers.whisper_asr import WhisperASR
+
+    monkeypatch.setitem(sys.modules, "faster_whisper", types.SimpleNamespace(WhisperModel=lambda *a, **k: object()))
+    with pytest.raises(ValueError, match="unknown CALLSIGHT_DIARIZATION"):
+        WhisperASR(diarization="magic")
+    if importlib.util.find_spec("pyannote") is None:
+        with pytest.raises(RuntimeError, match="diarize"):
+            WhisperASR(diarization="pyannote", hf_token="x")
+    else:
+        import huggingface_hub
+
+        monkeypatch.setattr(huggingface_hub, "get_token", lambda: None)  # no `hf auth login` token either
+        with pytest.raises(RuntimeError, match="HF_TOKEN"):
+            WhisperASR(diarization="pyannote", hf_token="")

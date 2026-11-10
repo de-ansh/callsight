@@ -3,7 +3,10 @@ FROM python:3.12-slim
 WORKDIR /app
 COPY pyproject.toml ./
 COPY src ./src
-RUN pip install --no-cache-dir ".[asr]"
+# Add diarize for speaker separation in mono recordings (PyTorch, ~1-2 GB):
+#   docker compose build --build-arg EXTRAS=asr,diarize
+ARG EXTRAS=asr
+RUN pip install --no-cache-dir ".[${EXTRAS}]"
 
 RUN useradd --create-home appuser
 USER appuser
