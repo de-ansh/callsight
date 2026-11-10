@@ -7,6 +7,7 @@ Jobs are rows in `calls` with status 'queued'; several workers can run side by s
 from __future__ import annotations
 
 import logging
+from dataclasses import replace
 import tempfile
 import time
 from pathlib import PurePath
@@ -14,6 +15,7 @@ from urllib.parse import urlsplit
 
 from . import recordings, remote, retention, store
 from .config import Settings
+from .models import Transcript
 from .migrate import migrate
 from .registry import create, load_builtins
 from .service import analyze_transcript
@@ -40,17 +42,29 @@ def process_one(settings: Settings, asr) -> bool:
             else:  # handed over by a connector as a URL: fetch it into storage first
                 path = _fetch_into_storage(settings, call_id, job["recording_url"], tmp)
             transcript = asr.transcribe(path, job["external_id"])
+        transcript, rep = name_speakers(transcript, job.get("speaker_names"), job.get("rep_speaker"))
         with store.connect(settings.database_url) as conn:
             competitors = store.org_competitors(conn, job["org_id"])
-        report = analyze_transcript(transcript, settings=settings, extra_competitors=competitors)
+        report = analyze_transcript(transcript, settings=settings, extra_competitors=competitors, rep_speaker=rep)
         with store.connect(settings.database_url) as conn:
-            store.complete_job(conn, call_id, transcript, report)
+            store.complete_job(conn, call_id, transcript, report, rep)
         log.info("call %s done: %d segments, %d insights", call_id, len(transcript.segments), len(report.insights))
     except Exception as exc:  # one bad recording must not stop the worker
         log.exception("call %s failed", call_id)
         with store.connect(settings.database_url) as conn:
             store.fail_job(conn, call_id, f"{type(exc).__name__}: {exc}")
     return True
+
+
+def name_speakers(transcript: Transcript, names: dict[str, str] | None, rep: str | None
+                  ) -> tuple[Transcript, str | None]:
+    """Apply names given at upload. Only for stereo recordings: there the channels say who is who,
+    while in mono "Speaker 1" is just whoever spoke first."""
+    if not names or not getattr(transcript, "stereo", False):
+        return transcript, rep if rep in transcript.speakers else None
+    segments = [replace(s, speaker=names.get(s.speaker, s.speaker)) for s in transcript.segments]
+    renamed = Transcript(transcript.call_id, segments, stereo=True)
+    return renamed, rep if rep in renamed.speakers else None
 
 
 def _fetch_into_storage(settings: Settings, call_id, url: str, tmp: str) -> str:

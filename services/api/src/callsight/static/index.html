@@ -306,6 +306,10 @@ function addCallPanel(onAdded) {
   const msg = el("div", { class: "msg", role: "status" });
   const fileInput = el("input", { type: "file", id: "file", accept: ".wav,.mp3,.m4a,.ogg,.flac,.webm,.mp4" });
   const audioName = el("input", { type: "text", id: "audio-name", placeholder: "e.g. acme-discovery-1" });
+  const repName = el("input", { type: "text", id: "rep-name", placeholder: "e.g. Alex", maxlength: "40" });
+  const customerName = el("input", { type: "text", id: "customer-name", placeholder: "e.g. Priya", maxlength: "40" });
+  const repChannel = el("select", { id: "rep-channel" },
+    el("option", { value: "left" }, "Left channel"), el("option", { value: "right" }, "Right channel"));
   const textName = el("input", { type: "text", id: "text-name", placeholder: "e.g. acme-discovery-1" });
   const transcript = el("textarea", { id: "transcript", placeholder: "[00:00] Alex: Thanks for joining\n[00:05] Priya: The price is too high" });
 
@@ -324,6 +328,9 @@ function addCallPanel(onAdded) {
         const form = new FormData();
         form.append("file", fileInput.files[0]);
         if (audioName.value.trim()) form.append("call_id", audioName.value.trim());
+        form.append("rep_name", repName.value.trim());
+        form.append("customer_name", customerName.value.trim());
+        form.append("rep_channel", repChannel.value);
         await api("/v1/calls/upload", { method: "POST", body: form });
         fileInput.value = ""; audioName.value = "";
         return "Uploaded. Transcription runs in the background; the list updates by itself.";
@@ -332,7 +339,12 @@ function addCallPanel(onAdded) {
       el("div", {}, el("label", { for: "file" }, "Recording (wav, mp3, m4a, ogg, flac, webm, mp4)"), fileInput),
       el("div", {}, el("label", { for: "audio-name" }, "Call name (optional)"), audioName),
       uploadBtn),
-    el("p", { class: "help" }, "Stereo phone recordings get one speaker per channel. Nothing leaves your servers."));
+    el("div", { class: "add-row" },
+      el("div", {}, el("label", { for: "rep-name" }, "Rep's name (optional)"), repName),
+      el("div", {}, el("label", { for: "customer-name" }, "Customer's name (optional)"), customerName),
+      el("div", { style: "flex: 0 0 auto; min-width: 150px" }, el("label", { for: "rep-channel" }, "Rep is on the"), repChannel)),
+    el("p", { class: "help" }, "Stereo phone recordings get one speaker per channel, and the names above label those channels. "
+      + "For mono recordings, rename speakers on the call page afterwards. Nothing leaves your servers."));
 
   const pasteForm = el("form", { hidden: true, onsubmit: e => { e.preventDefault();
       submit(pasteBtn, async () => {

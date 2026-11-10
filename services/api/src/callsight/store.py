@@ -82,13 +82,16 @@ def save_call(
 def create_queued_call(
     conn: psycopg.Connection, org_id: UUID, call_id: UUID, external_id: str, recording_key: str | None = None,
     recording_url: str | None = None, source: str = "audio",
+    speaker_names: dict[str, str] | None = None, rep_speaker: str | None = None,
 ) -> None:
-    """Register a recording for the worker: already in storage (key) or to be fetched (url)."""
+    """Register a recording for the worker: already in storage (key) or to be fetched (url).
+    `speaker_names` maps stereo channel labels to people; the worker applies it to stereo recordings."""
     with conn.transaction():
         conn.execute(
-            "INSERT INTO calls (id, org_id, external_id, source, status, recording_key, recording_url)"
-            " VALUES (%s, %s, %s, %s, 'queued', %s, %s)",
-            (call_id, org_id, external_id, source, recording_key, recording_url),
+            "INSERT INTO calls (id, org_id, external_id, source, status, recording_key, recording_url,"
+            " speaker_names, rep_speaker) VALUES (%s, %s, %s, %s, 'queued', %s, %s, %s, %s)",
+            (call_id, org_id, external_id, source, recording_key, recording_url,
+             Jsonb(speaker_names) if speaker_names else None, rep_speaker),
         )
 
 
@@ -212,15 +215,17 @@ def claim_job(conn: psycopg.Connection) -> dict[str, Any] | None:
             "   WHERE status = 'queued'"
             f"     OR (status = 'processing' AND claimed_at < now() - interval '{STALE_CLAIM}')"
             "   ORDER BY created_at FOR UPDATE SKIP LOCKED LIMIT 1)"
-            " RETURNING id, org_id, external_id, recording_key, recording_url"
+            " RETURNING id, org_id, external_id, recording_key, recording_url, speaker_names, rep_speaker"
         ).fetchone()
 
 
-def complete_job(conn: psycopg.Connection, call_id: UUID, transcript: Transcript, report: CallReport) -> None:
+def complete_job(conn: psycopg.Connection, call_id: UUID, transcript: Transcript, report: CallReport,
+                 rep_speaker: str | None = None) -> None:
     with conn.transaction():
         conn.execute(
-            "UPDATE calls SET status = 'done', duration_s = %s, summary = %s, talk_share = %s WHERE id = %s",
-            (report.duration_s, report.summary, Jsonb(report.talk_share), call_id),
+            "UPDATE calls SET status = 'done', duration_s = %s, summary = %s, talk_share = %s, rep_speaker = %s"
+            " WHERE id = %s",
+            (report.duration_s, report.summary, Jsonb(report.talk_share), rep_speaker, call_id),
         )
         # A stale claim can be retried while the first worker still finishes; last write wins.
         conn.execute("DELETE FROM segments WHERE call_id = %s", (call_id,))

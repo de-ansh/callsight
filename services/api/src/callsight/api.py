@@ -197,10 +197,19 @@ def analyze_call(request: AnalyzeRequest, http: Request) -> dict:
 
 @app.post("/v1/calls/upload", status_code=202)
 def upload_call(
-    file: UploadFile = File(...), call_id: str = Form("upload"), principal: Principal = Depends(require_key)
+    file: UploadFile = File(...), call_id: str = Form("upload"),
+    rep_name: str = Form("", max_length=40), customer_name: str = Form("", max_length=40),
+    rep_channel: Literal["left", "right"] = Form("left"),
+    principal: Principal = Depends(require_key),
 ) -> dict:
-    """Store a recording and queue it for transcription and analysis by the worker."""
+    """Store a recording and queue it for transcription and analysis by the worker.
+    For stereo recordings, `rep_name` / `customer_name` name the channels (the rep on `rep_channel`)."""
     settings = Settings.from_env()
+    rep_name, customer_name = rep_name.strip(), customer_name.strip()
+    if rep_name and rep_name == customer_name:
+        raise HTTPException(status_code=422, detail="The rep and the customer need different names")
+    rep_label, customer_label = ("Speaker 1", "Speaker 2") if rep_channel == "left" else ("Speaker 2", "Speaker 1")
+    names = {label: name for label, name in ((rep_label, rep_name), (customer_label, customer_name)) if name}
     if not settings.s3_endpoint:
         raise HTTPException(status_code=503, detail="Audio upload is disabled: CALLSIGHT_S3_ENDPOINT is not set")
     ext = PurePath(file.filename or "").suffix.lower()
@@ -216,7 +225,8 @@ def upload_call(
     # Object first, row second: a failed insert leaves only an orphan object, never a job without audio.
     recordings.put(settings, key, file.file, file.size, AUDIO_TYPES[ext])
     with store.connect(settings.database_url) as conn:
-        store.create_queued_call(conn, principal.org_id, new_id, call_id, key)
+        store.create_queued_call(conn, principal.org_id, new_id, call_id, key, speaker_names=names or None,
+                                 rep_speaker=rep_name or rep_label)
         store.audit(conn, principal.org_id, principal.actor, "call.create", str(new_id), {"source": "audio"})
     return {"id": new_id, "status": "queued"}
 

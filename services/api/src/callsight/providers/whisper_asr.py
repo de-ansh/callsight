@@ -72,4 +72,4 @@ class WhisperASR:
         segments = merge_channels(channels)
         if not segments:
             raise ValueError("no speech found in the recording")
-        return Transcript(call_id=call_id, segments=segments)
+        return Transcript(call_id=call_id, segments=segments, stereo=stereo)

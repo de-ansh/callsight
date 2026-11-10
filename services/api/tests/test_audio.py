@@ -147,3 +147,44 @@ def test_calls_still_processing_cannot_be_reanalyzed(monkeypatch, client):
     queued = upload("q.wav", b"RIFF", client=client).json()["id"]
     assert client.post(f"/v1/calls/{queued}/reanalyze").status_code == 409
     client.delete(f"/v1/calls/{queued}")
+
+
+def test_upload_names_apply_to_stereo_channels_only():
+    from callsight.models import Segment, Transcript
+    from callsight.worker import name_speakers
+
+    segs = [Segment(0, 0.0, "Speaker 1", "Hi"), Segment(1, 2.0, "Speaker 2", "Hello")]
+    names = {"Speaker 2": "Alex", "Speaker 1": "Priya"}  # rep Alex on the right channel
+    t, rep = name_speakers(Transcript("c", segs, stereo=True), names, "Alex")
+    assert t.speakers == ["Priya", "Alex"] and rep == "Alex"
+    # Mono: "Speaker 1" is just whoever spoke first, so channel names are not applied.
+    t, rep = name_speakers(Transcript("c", segs[:1]), names, "Alex")
+    assert t.speakers == ["Speaker 1"] and rep is None
+    # Stereo without names but with the rep on the right channel.
+    t, rep = name_speakers(Transcript("c", segs, stereo=True), None, "Speaker 2")
+    assert t.speakers == ["Speaker 1", "Speaker 2"] and rep == "Speaker 2"
+
+
+@pytest.mark.skipif(not (DB_URL and S3), reason="needs CALLSIGHT_TEST_DATABASE_URL and CALLSIGHT_TEST_S3_ENDPOINT")
+def test_upload_names_reach_the_stored_call(monkeypatch, client):
+    monkeypatch.setenv("CALLSIGHT_S3_ENDPOINT", S3)
+    monkeypatch.setenv("CALLSIGHT_S3_ACCESS_KEY", os.environ["CALLSIGHT_TEST_S3_ACCESS_KEY"])
+    monkeypatch.setenv("CALLSIGHT_S3_SECRET_KEY", os.environ["CALLSIGHT_TEST_S3_SECRET_KEY"])
+    settings = Settings.from_env()
+    while worker.process_one(settings, BrokenASR()):  # drain leftovers
+        pass
+
+    class StereoASR:
+        def transcribe(self, source, call_id):
+            return Transcript(call_id, [Segment(0, 0.0, "Speaker 1", "Hi, the price is too expensive for us."),
+                                        Segment(1, 4.0, "Speaker 2", "Understood, thanks for telling me.")], stereo=True)
+
+    assert upload("c.mp3", b"x", client=client, rep_name="Sam", customer_name="Sam").status_code == 422
+    res = upload("c.mp3", b"audio", client=client, call_id="named", rep_name="Alex", customer_name="Priya",
+                 rep_channel="right")
+    assert res.status_code == 202
+    assert worker.process_one(settings, StereoASR())
+    call = client.get(f"/v1/calls/{res.json()['id']}").json()
+    assert call["speakers"] == ["Priya", "Alex"] and call["rep_speaker"] == "Alex"
+    # Priya is the customer, so her line counts as a pricing objection.
+    assert any(i["kind"] == "pricing_objection" and i["evidence"][0]["speaker"] == "Priya" for i in call["insights"])
