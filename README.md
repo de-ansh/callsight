@@ -150,7 +150,14 @@ finds who spoke when and each transcribed word is given to the speaker talking a
 3. Set `CALLSIGHT_DIARIZATION=pyannote` and `HF_TOKEN=<token>`, then start the worker.
 
 Speakers come out as "Speaker 1", "Speaker 2", ... in order of first speaking; rename them
-and mark the rep on the call page. Diarization adds processing time on CPU on top of transcription.
+and mark the rep on the call page.
+
+Diarization runs on top of transcription. On a 10-core Apple M4 CPU it took 0.6–0.7× the call's
+length, against about 0.15× for Whisper `small`. On two-party test calls made with synthetic voices,
+99.7–99.9% of words went to the right speaker, including with phone-band audio and background
+noise. Two similar-sounding voices were merged into a single speaker, which leaves the call as it
+would be without diarization. These calls have no crosstalk, so try it on a few of your own
+recordings before relying on it.
 
 ### Sending calls from another system (webhook)
 
