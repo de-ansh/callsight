@@ -71,6 +71,8 @@ Open http://localhost:8000, paste the key, and click any insight's quote to jump
 
 ## Run the stack
 
+For a production deployment (TLS, backups, upgrades) see [docs/deployment.md](docs/deployment.md).
+
 ```bash
 cp .env.example .env          # then change the passwords and set CALLSIGHT_SECRET_KEY
 docker compose up --build     # API on http://localhost:8000
