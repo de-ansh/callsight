@@ -723,7 +723,31 @@ async function showSettings() {
       el("p", { class: "help" }, "One name per line. Calls that mention them are flagged, including spellings like “Acme call” for AcmeCall."),
       el("label", { for: "competitors" }, "Competitor names"), box,
       el("div", { style: "margin-top: 12px" }, save), msg),
-    reanalyzeAllPanel());
+    reanalyzeAllPanel(),
+    accessPanel());
+}
+
+function accessPanel() {
+  const body = el("div", {}, el("p", { class: "meta" }, "Loading…"));
+  const day = d => d ? new Date(d).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "";
+  const table = (head, rows) => el("table", {}, el("thead", {}, el("tr", {}, ...head.map(h => el("th", {}, h)))),
+    el("tbody", {}, ...rows.map(r => el("tr", {}, ...r.map(c => el("td", {}, c))))));
+  api("/v1/access").then(a => body.replaceChildren(
+    el("h2", { style: "margin-top: 8px" }, "API keys"),
+    a.keys.length ? table(["Name", "Created", "Status"], a.keys.map(k => [k.name, day(k.created_at),
+      k.revoked_at ? el("span", { class: "meta" }, `revoked ${day(k.revoked_at)}`) : el("span", { class: "status st-done" }, "active")]))
+      : el("p", { class: "meta" }, "No keys."),
+    el("h2", { style: "margin-top: 16px" }, "Single sign-on domains"),
+    a.domains.length ? table(["Domain", "Since"], a.domains.map(d => [`@${d.domain}`, day(d.created_at)]))
+      : el("p", { class: "meta" }, "None. People can only use API keys."),
+    el("h2", { style: "margin-top: 16px" }, "Recent sign-ins"),
+    a.sign_ins.length ? table(["Person", "Last signed in", "Sign-ins"], a.sign_ins.map(u => [u.email, fmtDate(u.last_sign_in), u.sign_ins]))
+      : el("p", { class: "meta" }, "No single sign-on sign-ins yet."),
+    el("p", { class: "help", style: "margin-top: 12px" }, "To change access, an administrator runs ",
+      el("code", {}, "python -m callsight.admin create-key | revoke-key | allow-domain | disallow-domain"), "."),
+  )).catch(e => { if (!handle(e)) body.replaceChildren(el("p", { class: "error" }, e.message)); });
+  return el("section", { class: "panel narrow", style: "margin-top: 16px", "aria-label": "Access" }, el("h2", {}, "Access"),
+    el("p", { class: "help" }, "Who can get into this organization. Read-only here."), body);
 }
 
 function reanalyzeAllPanel() {

@@ -159,6 +159,24 @@ def trends(conn: psycopg.Connection, org_id: UUID, days: int) -> dict[str, Any]:
             "weekly": weekly, "needs_attention": attention}
 
 
+def access_overview(conn: psycopg.Connection, org_id: UUID) -> dict[str, Any]:
+    """Who can get in: API keys (never their hashes), allowed sign-in domains, recent sign-ins."""
+    return {
+        "keys": conn.execute(
+            "SELECT name, created_at, revoked_at FROM api_keys WHERE org_id = %s ORDER BY revoked_at NULLS FIRST, created_at DESC",
+            (org_id,),
+        ).fetchall(),
+        "domains": conn.execute(
+            "SELECT domain, created_at FROM org_domains WHERE org_id = %s ORDER BY domain", (org_id,)
+        ).fetchall(),
+        "sign_ins": conn.execute(
+            "SELECT target AS email, max(at) AS last_sign_in, count(*) AS sign_ins FROM audit_log"
+            " WHERE org_id = %s AND action = 'user.sign_in' GROUP BY target ORDER BY last_sign_in DESC LIMIT 50",
+            (org_id,),
+        ).fetchall(),
+    }
+
+
 def list_audit(conn: psycopg.Connection, org_id: UUID, limit: int, offset: int) -> list[dict[str, Any]]:
     return conn.execute(
         "SELECT actor, action, target, details, at FROM audit_log WHERE org_id = %s"

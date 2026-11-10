@@ -517,6 +517,13 @@ def get_trends(days: int = Query(30, ge=1, le=365), principal: Principal = Depen
         return store.trends(conn, principal.org_id, days)
 
 
+@app.get("/v1/access")
+def access(principal: Principal = Depends(require_key)) -> dict:
+    """Read-only: this organization's API keys, allowed sign-in domains and recent sign-ins."""
+    with store.connect(Settings.from_env().database_url) as conn:
+        return store.access_overview(conn, principal.org_id)
+
+
 @app.get("/v1/audit")
 def audit_log(
     limit: int = Query(100, ge=1, le=500), offset: int = Query(0, ge=0), principal: Principal = Depends(require_key)
