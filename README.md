@@ -109,8 +109,15 @@ curl -s localhost:8000/v1/analyze -H "Authorization: Bearer $KEY" -H 'content-ty
 - **Organizations and keys.** Every API key belongs to one organization and can only see and
   create that organization's calls; another org's call returns 404. Keys are stored as
   SHA-256 hashes and can be revoked: `python -m callsight.admin revoke-key --org acme --name alice`.
-- **Audit log.** Creating or reading a call, playing its recording and creating keys are
-  recorded with who did it: `GET /v1/audit` (or *Audit log* in the UI).
+- **Admins.** Admins manage access from *Settings → Access*: create and revoke API keys, remove
+  sign-in domains, and make other signed-in people admins. Everyone else sees it read-only.
+  Create the first admin on the server, with an admin key
+  (`create-key --org acme --name alice --admin`) or an SSO email
+  (`grant-admin --org acme --email alice@acme.com`). Adding a sign-in domain stays on the
+  server (`allow-domain`), because a domain decides who joins. Existing keys are members.
+  All other features are open to every member.
+- **Audit log.** Creating or reading a call, playing its recording, and every access change
+  are recorded with who did it: `GET /v1/audit` (or *Audit log* in the UI).
 - **Recordings** are played through short-lived signed links (6 hours) because audio players
   cannot send an API key. Set `CALLSIGHT_SECRET_KEY` so links survive restarts and work across
   API replicas.

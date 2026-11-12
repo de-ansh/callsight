@@ -58,9 +58,10 @@ def session_principal(request: Request) -> auth.Principal | None:
     settings = Settings.from_env()
     with store.connect(settings.database_url) as conn:
         org_id = auth.org_for_email(conn, user["email"])  # removing a domain revokes its sessions at once
-    if org_id is None or str(org_id) != user.get("org_id"):
-        return None
-    return auth.Principal(org_id, f"user:{user['email']}")
+        if org_id is None or str(org_id) != user.get("org_id"):
+            return None
+        admin = auth.is_email_admin(conn, org_id, user["email"])  # checked per request, so removal is immediate
+    return auth.Principal(org_id, f"user:{user['email']}", admin)
 
 
 @router.get("/auth/config")
