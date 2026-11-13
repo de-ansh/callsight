@@ -6,8 +6,8 @@ mentions, no next step, rep talking too much), with every insight linked to the 
 transcript lines that support it.
 
 > **Status: v0.5.0, early.** Text and audio calls, rule-based and local-LLM analysis, a web
-> UI, a webhook connector, API keys with per-organization separation, and an audit log all
-> work and are tested. Speaker separation for mono recordings is opt-in (see below). Not yet: telephony/meeting
+> UI, a webhook connector, API keys with per-organization separation, single sign-on, and an
+> audit log all work and are tested. Speaker separation for mono recordings is opt-in (see below). Not yet: telephony/meeting
 > connectors. Run it behind a reverse proxy for TLS and rate limiting. See the
 > [roadmap](docs/roadmap.md).
 
@@ -27,7 +27,7 @@ not been validated with users yet ([interview kit](docs/interview-kit.md)).*
 | Parse text transcripts (`[mm:ss] Speaker: text`) | Working, tested |
 | Rule-based analyzers: talk ratio, pricing/timing objections, competitor mentions, next step, action items | Working, tested |
 | Evidence links (segment id, timestamp, speaker, quote) on every insight | Working, tested |
-| Optional LLM summary via local Ollama | Written, **not yet run against a live Ollama** |
+| Optional LLM summary via local Ollama | Run against a live Ollama (llama3.2:3b) during the evals; the summary text itself is not scored |
 | CLI and HTTP API (`/health`, `POST /v1/analyze`, `GET /v1/calls`, `GET /v1/calls/{id}`) | Working, tested |
 | Postgres persistence (calls, segments, insights with evidence) when `CALLSIGHT_DATABASE_URL` is set | Working, tested against Postgres 16 (`CALLSIGHT_TEST_DATABASE_URL=... pytest`) |
 | Audio: `POST /v1/calls/upload` → MinIO → background worker (faster-whisper, speakers split by stereo channel) → stored report | Working, tested: full stack verified with a real 2-min stereo call (about 50 s to transcribe on CPU in Docker) |
@@ -36,7 +36,10 @@ not been validated with users yet ([interview kit](docs/interview-kit.md)).*
 | Webhook connector (`POST /v1/orgs/{org}/connectors/generic/webhook`, HMAC-signed per org; transcript or https recording URL) | Working, tested (SSRF guard, signatures, worker fetch) |
 | API keys, organizations (each key sees only its org's calls), audit log (`GET /v1/audit`) | Working, tested including cross-org access attempts |
 | LLM analyzer `llm_insights` (objection types incl. authority/need, commitments, next step, sentiment shifts) with an eval harness | Working; see [evals/README.md](evals/README.md) for measured precision/recall |
-| Mono-recording speaker separation, telephony/meeting connectors, auth | Not started |
+| Single sign-on (any OIDC provider), allowed email domains, read-only access overview | Working, tested; sign-in checked end to end in a browser against Dex, a real OIDC server |
+| Trends dashboard, bulk re-analysis, CSV export, printable summary, rule-based recap | Working, tested |
+| Mono-recording speaker separation (pyannote, opt-in) | Working; checked on synthetic calls only, in the venv and in the Docker image (see below) |
+| Telephony/meeting connectors | Not started |
 
 ## Try it (no dependencies beyond Python 3.10+)
 
@@ -221,10 +224,11 @@ or add it to `DEFAULT_ANALYZERS` in `pipeline.py`.
 
 ## Known limitations
 
-- The baseline analyzers are keyword heuristics. They produce false positives: on the
-  sample call, "Not right now, thanks." (a reply to "anything else?") is also flagged as
-  a timing concern. Measuring and improving this is what the planned eval harness is for.
-- Speaker roles are guessed (first speaker, or `CALLSIGHT_REP_NAMES`).
+- The baseline analyzers are keyword heuristics and still make mistakes. They were tuned on
+  the same 30 labelled calls the eval harness measures, so treat
+  [those numbers](evals/README.md) as a regression check, not real-world accuracy.
+- Speaker roles are guessed (first speaker, or `CALLSIGHT_REP_NAMES`) unless set at upload
+  or on the call page.
 - Duration is approximate (start of the last segment).
 - Only English-style keyword patterns are included.
 
