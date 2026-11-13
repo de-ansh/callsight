@@ -160,14 +160,18 @@ def trends(conn: psycopg.Connection, org_id: UUID, days: int) -> dict[str, Any]:
 
 
 def access_overview(conn: psycopg.Connection, org_id: UUID) -> dict[str, Any]:
-    """Who can get in: API keys (never their hashes), allowed sign-in domains, recent sign-ins."""
+    """Who can get in: API keys (never their hashes), allowed sign-in domains, admins, recent sign-ins."""
     return {
         "keys": conn.execute(
-            "SELECT name, created_at, revoked_at FROM api_keys WHERE org_id = %s ORDER BY revoked_at NULLS FIRST, created_at DESC",
+            "SELECT id, name, admin, created_at, revoked_at FROM api_keys WHERE org_id = %s"
+            " ORDER BY revoked_at NULLS FIRST, created_at DESC",
             (org_id,),
         ).fetchall(),
         "domains": conn.execute(
             "SELECT domain, created_at FROM org_domains WHERE org_id = %s ORDER BY domain", (org_id,)
+        ).fetchall(),
+        "admins": conn.execute(
+            "SELECT email, created_at FROM org_admins WHERE org_id = %s ORDER BY email", (org_id,)
         ).fetchall(),
         "sign_ins": conn.execute(
             "SELECT target AS email, max(at) AS last_sign_in, count(*) AS sign_ins FROM audit_log"

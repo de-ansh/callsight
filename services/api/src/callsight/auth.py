@@ -13,6 +13,7 @@ from urllib.parse import urlencode
 from uuid import UUID
 
 import psycopg
+from psycopg.types.json import Jsonb
 
 log = logging.getLogger(__name__)
 KEY_PREFIX = "cs_"
@@ -23,6 +24,7 @@ RECORDING_LINK_TTL_S = 6 * 3600
 class Principal:
     org_id: UUID
     actor: str  # for the audit log, e.g. "key:laptop"
+    admin: bool = False  # may manage keys, domains and admins from the UI
 
 
 def hash_key(key: str) -> str:
@@ -30,20 +32,45 @@ def hash_key(key: str) -> str:
     return hashlib.sha256(key.encode()).hexdigest()
 
 
-def create_key(conn: psycopg.Connection, org_name: str, key_name: str) -> str:
-    """Create an API key for an org (creating the org if needed). Returns the key; only its hash is stored."""
+def _org_id(conn: psycopg.Connection, org_name: str) -> UUID:
+    conn.execute("INSERT INTO orgs (name) VALUES (%s) ON CONFLICT (name) DO NOTHING", (org_name,))
+    return conn.execute("SELECT id FROM orgs WHERE name = %s", (org_name,)).fetchone()["id"]
+
+
+def add_key(conn: psycopg.Connection, org_id: UUID, key_name: str, admin: bool, actor: str) -> tuple[str, UUID]:
+    """Create an API key in an org. Returns (key, id); only the key's hash is stored."""
     key = KEY_PREFIX + secrets.token_urlsafe(32)
     with conn.transaction():
-        conn.execute("INSERT INTO orgs (name) VALUES (%s) ON CONFLICT (name) DO NOTHING", (org_name,))
-        org_id = conn.execute("SELECT id FROM orgs WHERE name = %s", (org_name,)).fetchone()["id"]
+        key_id = conn.execute(
+            "INSERT INTO api_keys (org_id, name, key_hash, admin) VALUES (%s, %s, %s, %s) RETURNING id",
+            (org_id, key_name, hash_key(key), admin),
+        ).fetchone()["id"]
         conn.execute(
-            "INSERT INTO api_keys (org_id, name, key_hash) VALUES (%s, %s, %s)", (org_id, key_name, hash_key(key))
+            "INSERT INTO audit_log (org_id, actor, action, target, details) VALUES (%s, %s, 'key.create', %s, %s)",
+            (org_id, actor, key_name, Jsonb({"admin": admin})),
         )
-        conn.execute(
-            "INSERT INTO audit_log (org_id, actor, action, target) VALUES (%s, 'admin-cli', 'key.create', %s)",
-            (org_id, key_name),
-        )
-    return key
+    return key, key_id
+
+
+def create_key(conn: psycopg.Connection, org_name: str, key_name: str, admin: bool = False) -> str:
+    """Create an API key for an org (creating the org if needed). Returns the key; only its hash is stored."""
+    with conn.transaction():
+        return add_key(conn, _org_id(conn, org_name), key_name, admin, "admin-cli")[0]
+
+
+def revoke_key_id(conn: psycopg.Connection, org_id: UUID, key_id: UUID, actor: str) -> str | None:
+    """Revoke one active key in this org. Returns its name, or None if there is no such active key."""
+    with conn.transaction():
+        row = conn.execute(
+            "UPDATE api_keys SET revoked_at = now() WHERE id = %s AND org_id = %s AND revoked_at IS NULL RETURNING name",
+            (key_id, org_id),
+        ).fetchone()
+        if row:
+            conn.execute(
+                "INSERT INTO audit_log (org_id, actor, action, target) VALUES (%s, %s, 'key.revoke', %s)",
+                (org_id, actor, row["name"]),
+            )
+    return row["name"] if row else None
 
 
 def revoke_key(conn: psycopg.Connection, org_name: str, key_name: str) -> int:
@@ -57,9 +84,9 @@ def revoke_key(conn: psycopg.Connection, org_name: str, key_name: str) -> int:
 
 def principal_for_key(conn: psycopg.Connection, key: str) -> Principal | None:
     row = conn.execute(
-        "SELECT org_id, name FROM api_keys WHERE key_hash = %s AND revoked_at IS NULL", (hash_key(key),)
+        "SELECT org_id, name, admin FROM api_keys WHERE key_hash = %s AND revoked_at IS NULL", (hash_key(key),)
     ).fetchone()
-    return Principal(row["org_id"], f"key:{row['name']}") if row else None
+    return Principal(row["org_id"], f"key:{row['name']}", row["admin"]) if row else None
 
 
 # --- single sign-on: email domain -> organization -----------------------------------------
@@ -94,6 +121,55 @@ def allow_domain(conn: psycopg.Connection, org_name: str, domain: str) -> None:
 def disallow_domain(conn: psycopg.Connection, domain: str) -> int:
     with conn.transaction():
         return conn.execute("DELETE FROM org_domains WHERE domain = %s", (normalize_domain(domain),)).rowcount
+
+
+def remove_org_domain(conn: psycopg.Connection, org_id: UUID, domain: str, actor: str) -> bool:
+    """Stop sign-in for one of this org's domains (its sessions end at once). False if it isn't this org's."""
+    try:
+        domain = normalize_domain(domain)
+    except ValueError:
+        return False
+    with conn.transaction():
+        removed = conn.execute("DELETE FROM org_domains WHERE domain = %s AND org_id = %s", (domain, org_id)).rowcount
+        if removed:
+            conn.execute(
+                "INSERT INTO audit_log (org_id, actor, action, target) VALUES (%s, %s, 'domain.disallow', %s)",
+                (org_id, actor, domain),
+            )
+    return bool(removed)
+
+
+# --- admins who sign in with SSO ------------------------------------------------------------
+
+def normalize_email(email: str) -> str:
+    local, at, domain = email.strip().lower().rpartition("@")
+    if not at or not local or len(email) > 254 or any(c.isspace() for c in local):
+        raise ValueError(f"not a valid email: {email!r}")
+    return f"{local}@{normalize_domain(domain)}"
+
+
+def set_email_admin(conn: psycopg.Connection, org_id: UUID, email: str, admin: bool, actor: str) -> bool:
+    """Grant or remove admin for a signed-in email. Returns whether anything changed."""
+    email = normalize_email(email)
+    with conn.transaction():
+        if admin:
+            changed = conn.execute(
+                "INSERT INTO org_admins (org_id, email) VALUES (%s, %s) ON CONFLICT DO NOTHING", (org_id, email)
+            ).rowcount
+        else:
+            changed = conn.execute("DELETE FROM org_admins WHERE org_id = %s AND email = %s", (org_id, email)).rowcount
+        if changed:
+            conn.execute(
+                "INSERT INTO audit_log (org_id, actor, action, target) VALUES (%s, %s, %s, %s)",
+                (org_id, actor, "admin.grant" if admin else "admin.revoke", email),
+            )
+    return bool(changed)
+
+
+def is_email_admin(conn: psycopg.Connection, org_id: UUID, email: str) -> bool:
+    return conn.execute(
+        "SELECT 1 FROM org_admins WHERE org_id = %s AND email = %s", (org_id, email.strip().lower())
+    ).fetchone() is not None
 
 
 def org_for_email(conn: psycopg.Connection, email: str) -> UUID | None:

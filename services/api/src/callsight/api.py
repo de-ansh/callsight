@@ -156,6 +156,13 @@ def require_key(request: Request) -> Principal:
     return principal
 
 
+def require_admin(principal: Principal = Depends(require_key)) -> Principal:
+    """Like require_key, but 403 unless the key or signed-in person is an admin of the organization."""
+    if not principal.admin:
+        raise HTTPException(status_code=403, detail="Only an administrator can do this")
+    return principal
+
+
 @app.get("/", include_in_schema=False)
 def ui() -> FileResponse:
     return FileResponse(_STATIC / "index.html")
@@ -164,7 +171,7 @@ def ui() -> FileResponse:
 @app.get("/auth/me")
 def whoami(principal: Principal = Depends(require_key)) -> dict:
     """Who this request is authenticated as: 'user:<email>' for sign-in, 'key:<name>' for API keys."""
-    return {"actor": principal.actor, "org_id": principal.org_id}
+    return {"actor": principal.actor, "org_id": principal.org_id, "admin": principal.admin}
 
 
 @app.get("/health")
@@ -519,9 +526,70 @@ def get_trends(days: int = Query(30, ge=1, le=365), principal: Principal = Depen
 
 @app.get("/v1/access")
 def access(principal: Principal = Depends(require_key)) -> dict:
-    """Read-only: this organization's API keys, allowed sign-in domains and recent sign-ins."""
+    """This organization's API keys, allowed sign-in domains, admins and recent sign-ins."""
     with store.connect(Settings.from_env().database_url) as conn:
         return store.access_overview(conn, principal.org_id)
+
+
+class KeyCreate(BaseModel):
+    name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=1, max_length=80)]
+    admin: bool = False
+
+
+@app.post("/v1/keys", status_code=201)
+def create_key(body: KeyCreate, principal: Principal = Depends(require_admin)) -> dict:
+    """Admins: create an API key. The key is in this response only; just its hash is stored."""
+    with store.connect(Settings.from_env().database_url) as conn:
+        key, key_id = auth.add_key(conn, principal.org_id, body.name, body.admin, principal.actor)
+    return {"id": key_id, "name": body.name, "admin": body.admin, "key": key}
+
+
+@app.delete("/v1/keys/{key_id}", status_code=204)
+def revoke_key(key_id: UUID, principal: Principal = Depends(require_admin)) -> None:
+    """Admins: revoke an API key at once. Revoking the key you are using signs you out."""
+    with store.connect(Settings.from_env().database_url) as conn:
+        if auth.revoke_key_id(conn, principal.org_id, key_id, principal.actor) is None:
+            raise HTTPException(status_code=404, detail="No such active key")
+
+
+@app.delete("/v1/domains/{domain}", status_code=204)
+def remove_domain(domain: str, principal: Principal = Depends(require_admin)) -> None:
+    """Admins: stop sign-in for one of this organization's domains. Adding a domain stays on the
+    command line (allow-domain): a domain decides who joins, so the server operator grants it."""
+    with store.connect(Settings.from_env().database_url) as conn:
+        if not auth.remove_org_domain(conn, principal.org_id, domain, principal.actor):
+            raise HTTPException(status_code=404, detail="Not one of this organization's domains")
+
+
+class AdminGrant(BaseModel):
+    email: Annotated[str, StringConstraints(strip_whitespace=True, min_length=3, max_length=254)]
+
+
+@app.post("/v1/admins", status_code=201)
+def grant_admin(body: AdminGrant, principal: Principal = Depends(require_admin)) -> dict:
+    """Admins: make someone who signs in with SSO an admin of this organization."""
+    try:
+        email = auth.normalize_email(body.email)
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from exc
+    with store.connect(Settings.from_env().database_url) as conn:
+        auth.set_email_admin(conn, principal.org_id, email, True, principal.actor)
+    return {"email": email}
+
+
+@app.delete("/v1/admins/{email}", status_code=204)
+def revoke_admin(email: str, principal: Principal = Depends(require_admin)) -> None:
+    """Admins: remove another person's admin role. You cannot remove your own, so an org that has
+    a signed-in admin always keeps one."""
+    try:
+        email = auth.normalize_email(email)
+    except ValueError as exc:
+        raise HTTPException(status_code=404, detail="No such admin") from exc
+    if principal.actor == f"user:{email}":
+        raise HTTPException(status_code=400, detail="You cannot remove your own admin role")
+    with store.connect(Settings.from_env().database_url) as conn:
+        if not auth.set_email_admin(conn, principal.org_id, email, False, principal.actor):
+            raise HTTPException(status_code=404, detail="No such admin")
 
 
 @app.get("/v1/audit")

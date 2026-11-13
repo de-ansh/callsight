@@ -10,7 +10,7 @@ import sys
 from importlib.resources import files
 
 from . import store
-from .auth import allow_domain, create_key, disallow_domain, revoke_key
+from .auth import allow_domain, create_key, disallow_domain, revoke_key, set_email_admin
 from .config import Settings
 from .migrate import migrate
 from .service import analyze_text_with_transcript
@@ -25,6 +25,12 @@ def main(argv: list[str] | None = None) -> int:
         p = sub.add_parser(name)
         p.add_argument("--org", default="default", help="organization name (created if missing)")
         p.add_argument("--name", required=True, help="a label for the key, e.g. the person or system using it")
+        if name == "create-key":
+            p.add_argument("--admin", action="store_true", help="the key may manage keys, domains and admins in the UI")
+    for name, verb in (("grant-admin", "make"), ("revoke-admin", "stop")):
+        g = sub.add_parser(name, help=f"{verb} EMAIL (who signs in with SSO) an admin of ORG")
+        g.add_argument("--org", default="default")
+        g.add_argument("--email", required=True)
     d = sub.add_parser("allow-domain", help="let people with a verified email at DOMAIN sign in to ORG")
     d.add_argument("--org", default="default")
     d.add_argument("--domain", required=True)
@@ -42,8 +48,22 @@ def main(argv: list[str] | None = None) -> int:
     migrate(settings.database_url)
     with store.connect(settings.database_url) as conn:
         if args.command == "create-key":
-            print(create_key(conn, args.org, args.name))
+            print(create_key(conn, args.org, args.name, admin=args.admin))
             print("Store this key now; it cannot be shown again.", file=sys.stderr)
+        elif args.command in ("grant-admin", "revoke-admin"):
+            grant = args.command == "grant-admin"
+            row = conn.execute("SELECT id FROM orgs WHERE name = %s", (args.org,)).fetchone()
+            if not row:
+                print(f"no org named {args.org!r}", file=sys.stderr)
+                return 1
+            try:
+                changed = set_email_admin(conn, row["id"], args.email, grant, "admin-cli")
+            except ValueError as exc:
+                print(f"error: {exc}", file=sys.stderr)
+                return 2
+            print(f"{args.email.strip().lower()} is {'now' if grant else 'no longer'} an admin of {args.org!r}"
+                  + ("" if changed else " (unchanged)") + ".")
+            return 0 if changed or grant else 1
         elif args.command == "revoke-key":
             n = revoke_key(conn, args.org, args.name)
             print(f"revoked {n} key(s)")
@@ -71,7 +91,7 @@ def main(argv: list[str] | None = None) -> int:
 
 
 def _demo(conn, settings: Settings) -> int:
-    key = create_key(conn, "demo", "demo")
+    key = create_key(conn, "demo", "demo", admin=True)  # so a first look includes managing access
     org_id = conn.execute("SELECT id FROM orgs WHERE name = 'demo'").fetchone()["id"]
     if not store.org_competitors(conn, org_id):  # so later uploads in the demo org flag them too
         store.set_org_competitors(conn, org_id, list(DEMO_COMPETITORS))

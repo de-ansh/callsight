@@ -71,7 +71,7 @@
   .btn.danger { border-color: var(--high); color: var(--high); background: none; }
   .btn.danger:hover { background: var(--high-soft); }
   label { display: block; font-size: 13px; color: var(--muted); margin: 12px 0 4px; }
-  input[type=text], input[type=search], textarea, select {
+  input[type=text], input[type=search], input[type=email], textarea, select {
     width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 7px;
     background: var(--raised); color: var(--text); font: inherit; }
   textarea { min-height: 120px; font-family: ui-monospace, Menlo, monospace; font-size: 13px; }
@@ -250,7 +250,8 @@ async function api(path, options = {}) {
   if (getKey()) headers.authorization = `Bearer ${getKey()}`;
   const res = await fetch(path, { ...options, headers });
   if (res.status === 401) throw new AuthError("Your API key is missing or no longer valid.");
-  const body = res.headers.get("content-type")?.includes("json") ? await res.json() : null;
+  // FastAPI labels empty 204 replies as JSON, so don't parse those.
+  const body = res.status !== 204 && res.headers.get("content-type")?.includes("json") ? await res.json() : null;
   if (!res.ok) {
     const d = body?.detail;
     throw new Error(!d ? `HTTP ${res.status}` : typeof d === "string" ? d : (Array.isArray(d) ? d.map(x => x.msg).join("; ") : JSON.stringify(d)));
@@ -729,25 +730,77 @@ async function showSettings() {
 
 function accessPanel() {
   const body = el("div", {}, el("p", { class: "meta" }, "Loading…"));
+  const msg = el("div", { class: "msg", role: "status" });
+  const admin = !!me?.admin;
   const day = d => d ? new Date(d).toLocaleDateString(undefined, { day: "numeric", month: "short", year: "numeric" }) : "";
-  const table = (head, rows) => el("table", {}, el("thead", {}, el("tr", {}, ...head.map(h => el("th", {}, h)))),
-    el("tbody", {}, ...rows.map(r => el("tr", {}, ...r.map(c => el("td", {}, c))))));
-  api("/v1/access").then(a => body.replaceChildren(
-    el("h2", { style: "margin-top: 8px" }, "API keys"),
-    a.keys.length ? table(["Name", "Created", "Status"], a.keys.map(k => [k.name, day(k.created_at),
-      k.revoked_at ? el("span", { class: "meta" }, `revoked ${day(k.revoked_at)}`) : el("span", { class: "status st-done" }, "active")]))
-      : el("p", { class: "meta" }, "No keys."),
-    el("h2", { style: "margin-top: 16px" }, "Single sign-on domains"),
-    a.domains.length ? table(["Domain", "Since"], a.domains.map(d => [`@${d.domain}`, day(d.created_at)]))
-      : el("p", { class: "meta" }, "None. People can only use API keys."),
-    el("h2", { style: "margin-top: 16px" }, "Recent sign-ins"),
-    a.sign_ins.length ? table(["Person", "Last signed in", "Sign-ins"], a.sign_ins.map(u => [u.email, fmtDate(u.last_sign_in), u.sign_ins]))
-      : el("p", { class: "meta" }, "No single sign-on sign-ins yet."),
-    el("p", { class: "help", style: "margin-top: 12px" }, "To change access, an administrator runs ",
-      el("code", {}, "python -m callsight.admin create-key | revoke-key | allow-domain | disallow-domain"), "."),
-  )).catch(e => { if (!handle(e)) body.replaceChildren(el("p", { class: "error" }, e.message)); });
+  // Scrolls sideways inside the panel on a phone instead of widening the page.
+  const table = (head, rows) => el("div", { style: "overflow-x: auto" }, el("table", {},
+    el("thead", {}, el("tr", {}, ...head.map(h => el("th", {}, h)))),
+    el("tbody", {}, ...rows.map(r => el("tr", {}, ...r.map(c => el("td", {}, c)))))));
+  const json ={ "content-type": "application/json" };
+  // Runs an admin action, then reloads the panel; `done` is shown in the status line.
+  const act = async (question, path, options, done) => {
+    if (question && !confirm(question)) return;
+    msg.className = "msg"; msg.textContent = "Working…";
+    try { const r = await api(path, options); msg.replaceChildren(...[].concat(typeof done === "function" ? done(r) : done)); load(); }
+    catch (e) { if (!handle(e)) { msg.className = "msg error"; msg.textContent = e.message; } }
+  };
+  const small = (label, onclick, aria) => el("button", { class: "btn", type: "button", onclick, "aria-label": aria }, label);
+
+  function keyForm() {
+    const name = el("input", { type: "text", id: "new-key-name", maxlength: "80", placeholder: "e.g. ci-bot or a person's name", required: "" });
+    const isAdmin = el("input", { type: "checkbox", id: "new-key-admin" });
+    return el("form", { style: "margin-top: 8px", onsubmit: e => { e.preventDefault();
+        act(null, "/v1/keys", { method: "POST", headers: json, body: JSON.stringify({ name: name.value, admin: isAdmin.checked }) },
+          r => ["Key created. Copy it now, it won't be shown again: ", el("code", {}, r.key)]); } },
+      el("label", { for: "new-key-name" }, "New key name"), name,
+      el("label", { style: "display: block; margin-top: 8px" }, isAdmin, " Admin (can manage access)"),
+      el("div", { style: "margin-top: 8px" }, el("button", { class: "btn primary", type: "submit" }, "Create key")));
+  }
+
+  function adminForm() {
+    const email = el("input", { type: "email", id: "new-admin-email", placeholder: "name@company.com", required: "" });
+    return el("form", { style: "margin-top: 8px", onsubmit: e => { e.preventDefault();
+        act(null, "/v1/admins", { method: "POST", headers: json, body: JSON.stringify({ email: email.value }) },
+          r => `${r.email} is now an admin.`); } },
+      el("label", { for: "new-admin-email" }, "Make an admin (they sign in with SSO)"), email,
+      el("div", { style: "margin-top: 8px" }, el("button", { class: "btn", type: "submit" }, "Add admin")));
+  }
+
+  function load() {
+    api("/v1/access").then(a => body.replaceChildren(
+      el("h2", { style: "margin-top: 8px" }, "API keys"),
+      a.keys.length ? table(["Name", "Role", "Created", "Status", ...(admin ? [""] : [])], a.keys.map(k => [k.name,
+        k.admin ? "admin" : "member", day(k.created_at),
+        k.revoked_at ? el("span", { class: "meta" }, `revoked ${day(k.revoked_at)}`) : el("span", { class: "status st-done" }, "active"),
+        ...(admin ? [k.revoked_at ? "" : small("Revoke", () => act(`Revoke the key “${k.name}”? Anything using it stops working at once.`,
+          `/v1/keys/${k.id}`, { method: "DELETE" }, `Revoked “${k.name}”.`), `Revoke key ${k.name}`)] : [])]))
+        : el("p", { class: "meta" }, "No keys."),
+      admin ? keyForm() : null,
+      el("h2", { style: "margin-top: 16px" }, "Single sign-on domains"),
+      a.domains.length ? table(["Domain", "Since", ...(admin ? [""] : [])], a.domains.map(d => [`@${d.domain}`, day(d.created_at),
+        ...(admin ? [small("Remove", () => act(`Stop sign-in for @${d.domain}? People signed in with it are signed out at once.`,
+          `/v1/domains/${encodeURIComponent(d.domain)}`, { method: "DELETE" }, `Removed @${d.domain}.`), `Remove domain ${d.domain}`)] : [])]))
+        : el("p", { class: "meta" }, "None. People can only use API keys."),
+      el("h2", { style: "margin-top: 16px" }, "Admins who sign in"),
+      a.admins.length ? table(["Person", "Since", ...(admin ? [""] : [])], a.admins.map(u => [u.email, day(u.created_at),
+        ...(admin ? [me.actor === `user:${u.email}` ? el("span", { class: "meta" }, "you") : small("Remove", () =>
+          act(`Remove ${u.email} as an admin?`, `/v1/admins/${encodeURIComponent(u.email)}`, { method: "DELETE" },
+            `${u.email} is no longer an admin.`), `Remove admin ${u.email}`)] : [])]))
+        : el("p", { class: "meta" }, "None. Admin API keys are listed above."),
+      admin ? adminForm() : null,
+      el("h2", { style: "margin-top: 16px" }, "Recent sign-ins"),
+      a.sign_ins.length ? table(["Person", "Last signed in", "Sign-ins"], a.sign_ins.map(u => [u.email, fmtDate(u.last_sign_in), u.sign_ins]))
+        : el("p", { class: "meta" }, "No single sign-on sign-ins yet."),
+      el("p", { class: "help", style: "margin-top: 12px" }, ...(admin
+        ? ["Adding a sign-in domain stays on the server: ", el("code", {}, "python -m callsight.admin allow-domain"), "."]
+        : ["Only an admin can change access. The server operator can run ", el("code", {}, "python -m callsight.admin grant-admin"), "."])),
+    )).catch(e => { if (!handle(e)) body.replaceChildren(el("p", { class: "error" }, e.message)); });
+  }
+  load();
   return el("section", { class: "panel narrow", style: "margin-top: 16px", "aria-label": "Access" }, el("h2", {}, "Access"),
-    el("p", { class: "help" }, "Who can get into this organization. Read-only here."), body);
+    el("p", { class: "help" }, admin ? "Who can get into this organization. You are an admin." : "Who can get into this organization. Read-only for you."),
+    msg, body);
 }
 
 function reanalyzeAllPanel() {

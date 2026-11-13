@@ -29,7 +29,9 @@ TLS certificates go in `deploy/certs/` as `fullchain.pem` and `privkey.pem` (or 
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build
 docker compose -f docker-compose.yml -f docker-compose.prod.yml exec api \
   python -m callsight.admin allow-domain --org acme --domain acme.com   # with SSO
-# or: ... exec api python -m callsight.admin create-key --org acme --name alice
+# then make yourself an admin, to manage keys and admins from Settings → Access:
+#   ... exec api python -m callsight.admin grant-admin --org acme --email you@acme.com
+# or, without SSO: ... exec api python -m callsight.admin create-key --org acme --name alice --admin
 ```
 
 What the production override changes:
