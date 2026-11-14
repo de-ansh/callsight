@@ -5,7 +5,7 @@ Feed it a call, get back a summary and flagged risks (pricing objections, compet
 mentions, no next step, rep talking too much), with every insight linked to the exact
 transcript lines that support it.
 
-> **Status: v0.5.0, early.** Text and audio calls, rule-based and local-LLM analysis, a web
+> **Status: v0.6.0, early.** Text and audio calls, rule-based and local-LLM analysis, a web
 > UI, a webhook connector, API keys with per-organization separation, single sign-on, and an
 > audit log all work and are tested. Speaker separation for mono recordings is opt-in (see below). Not yet: telephony/meeting
 > connectors. Run it behind a reverse proxy for TLS and rate limiting. See the
