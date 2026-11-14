@@ -27,7 +27,7 @@ not been validated with users yet ([interview kit](docs/interview-kit.md)).*
 | Parse text transcripts (`[mm:ss] Speaker: text`) | Working, tested |
 | Rule-based analyzers: talk ratio, pricing/timing objections, competitor mentions, next step, action items | Working, tested |
 | Evidence links (segment id, timestamp, speaker, quote) on every insight | Working, tested |
-| Optional LLM summary via local Ollama | Run against a live Ollama (llama3.2:3b) during the evals; the summary text itself is not scored |
+| Optional LLM summary via local Ollama | Run against a live Ollama (llama3.1 8B and llama3.2:3b) during the evals; the summary text itself is not scored |
 | CLI and HTTP API (`/health`, `POST /v1/analyze`, `GET /v1/calls`, `GET /v1/calls/{id}`) | Working, tested |
 | Postgres persistence (calls, segments, insights with evidence) when `CALLSIGHT_DATABASE_URL` is set | Working, tested against Postgres 16 (`CALLSIGHT_TEST_DATABASE_URL=... pytest`) |
 | Audio: `POST /v1/calls/upload` → MinIO → background worker (faster-whisper, speakers split by stereo channel) → stored report | Working, tested: full stack verified with a real 2-min stereo call (about 50 s to transcribe on CPU in Docker) |
