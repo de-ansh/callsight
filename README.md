@@ -39,6 +39,7 @@ not been validated with users yet ([interview kit](docs/interview-kit.md)).*
 | Single sign-on (any OIDC provider), allowed email domains, admin roles (manage keys, domains and admins in the UI) | Working, tested; sign-in checked end to end in a browser against Dex, a real OIDC server |
 | Trends dashboard, bulk re-analysis, CSV export, printable summary, rule-based recap | Working, tested |
 | Mono-recording speaker separation (pyannote, opt-in) | Working; checked on synthetic calls only, in the venv and in the Docker image (see below) |
+| Semantic search across calls ("Meaning" on the Calls page, `GET /v1/search`, opt-in) | Working, tested; checked with `mxbai-embed-large` on the 30 eval calls (see below) |
 | Telephony/meeting connectors | Not started |
 
 ## Try it (no dependencies beyond Python 3.10+)
@@ -169,6 +170,28 @@ to transcribe and diarize. On two-party test calls made with synthetic voices,
 noise. Two similar-sounding voices were merged into a single speaker, which leaves the call as it
 would be without diarization. These calls have no crosstalk, so try it on a few of your own
 recordings before relying on it.
+
+### Searching calls by meaning (opt-in)
+
+The Calls page searches call names and exact words. With semantic search on, a **Meaning**
+switch next to the search box finds lines that say the same thing in other words: "they need
+their boss to approve it" finds "my director would have to approve any new tool" and "I'd need to
+run this by my VP". Each result opens the call at that line.
+
+1. Start Ollama (`docker compose --profile local-llm up`) and pull an embedding model:
+   `docker compose exec ollama ollama pull mxbai-embed-large`
+2. Set `CALLSIGHT_EMBED_MODEL=mxbai-embed-large` for the API and worker.
+
+The worker indexes every finished call, existing ones included, whenever it has no recording to
+transcribe; the page says how many calls are still waiting. On CPU in Docker it indexed about 7
+lines a second, so a large backlog takes a while the first time. Changing the model re-indexes
+everything. Search itself took 60–340 ms per query.
+
+On the 30 labelled eval calls, plain-English queries found the right lines well for pricing,
+approval and "we don't need this", less well for timing, and poorly for competitor names; use the
+word search for names. `mxbai-embed-large` did better there than `nomic-embed-text` (40% against
+27% of the top 5 results being labelled lines). Results are ranked by closeness and always fill
+the list, so the last ones can be off topic.
 
 ### Sending calls from another system (webhook)
 

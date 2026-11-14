@@ -368,11 +368,14 @@ function addCallPanel(onAdded) {
     el("div", { class: "tabs", role: "tablist" }, ...tabs), uploadForm, pasteForm, msg);
 }
 
+let callSearch = { q: "", meaning: false };  // kept so Back from a search hit returns to the results
+
 async function showCalls() {
   setNav("calls");
   const tbody = el("tbody");
+  const thead = el("thead");
   const count = el("span", { class: "count" });
-  const search = el("input", { type: "search", placeholder: "Search call names and what was said…", "aria-label": "Search calls" });
+  const search = el("input", { type: "search", "aria-label": "Search calls", value: callSearch.q });
   const statusFilter = el("select", { "aria-label": "Filter by status" },
     el("option", { value: "" }, "All statuses"), ...["done", "queued", "processing", "failed"].map(s => el("option", { value: s }, s)));
   const addSlot = el("div");
@@ -395,27 +398,62 @@ async function showCalls() {
       finally { exportBtn.disabled = false; }
     } }, "Export CSV");
   function toggleAdd(open = addSlot.childElementCount === 0) {
-    addSlot.replaceChildren(...(open ? [addCallPanel(loadCalls)] : []));
+    addSlot.replaceChildren(...(open ? [addCallPanel(load)] : []));
     addBtn.setAttribute("aria-expanded", String(open));
     addBtn.textContent = open ? "Close" : "+ Add a call";
   }
 
+  // "Meaning" ranks transcript lines by semantic similarity; shown only when the server has it set up.
+  const modeBtns = [["Words", false], ["Meaning", true]].map(([label, meaning]) => el("button", { type: "button",
+    title: meaning ? "Find lines that say the same thing in other words" : "Match call names and exact words",
+    onclick: () => { callSearch.meaning = meaning; setMode(); } }, label));
+  const modeCtl = me?.semantic_search ? el("div", { class: "seg-ctl", role: "group", "aria-label": "Search by" }, ...modeBtns) : null;
+  if (!me?.semantic_search) callSearch.meaning = false;
+  function setMode() {
+    modeBtns.forEach((b, i) => b.setAttribute("aria-pressed", String((i === 1) === callSearch.meaning)));
+    search.placeholder = callSearch.meaning ? "Describe what was said, e.g. “they need their boss to sign off”"
+      : "Search call names and what was said…";
+    statusFilter.hidden = exportBtn.hidden = callSearch.meaning;  // neither applies to line results
+    load();
+  }
+  function load() { return callSearch.meaning ? loadLines() : loadCalls(); }
+
   let searchTimer = null;
-  search.addEventListener("input", () => { clearTimeout(searchTimer); searchTimer = setTimeout(loadCalls, 300); });
+  search.addEventListener("input", () => { callSearch.q = search.value; clearTimeout(searchTimer); searchTimer = setTimeout(load, 300); });
   statusFilter.addEventListener("change", loadCalls);
 
   app.replaceChildren(
     el("div", { class: "page-head" }, el("h1", {}, "Calls"), count, el("span", { class: "spacer" }), exportBtn, addBtn),
     addSlot,
     el("section", { class: "panel" },
-      el("div", { class: "toolbar" }, search, statusFilter),
-      el("table", {},
-        el("thead", {}, el("tr", {}, el("th", {}, "Call"), el("th", {}, "Status"), el("th", { class: "hide-sm" }, "Length"),
-          el("th", {}, "Insights"), el("th", { class: "hide-sm" }, "Added"))),
-        tbody)));
+      el("div", { class: "toolbar" }, search, modeCtl, statusFilter),
+      el("table", {}, thead, tbody)));
+
+  async function loadLines() {
+    clearTimeout(pollTimer);
+    thead.replaceChildren(el("tr", {}, el("th", {}, "Call"), el("th", {}, "What was said")));
+    const q = search.value.trim();
+    const say = (text, cls = "empty") => tbody.replaceChildren(el("tr", {}, el("td", { colspan: 2, class: cls }, text)));
+    if (!q) { count.textContent = ""; say("Type what you're looking for. Lines that mean the same thing match, even in different words."); return; }
+    let r;
+    try { r = await api(`/v1/search?${new URLSearchParams({ q, limit: "30" })}`); }
+    catch (e) { if (!handle(e)) say(e.message, "error"); return; }
+    if (q !== search.value.trim() || !callSearch.meaning) return;  // a newer search has started
+    const pending = r.calls_pending ? ` · ${r.calls_pending} ${r.calls_pending === 1 ? "call" : "calls"} still being indexed` : "";
+    count.textContent = `closest ${r.results.length} lines${pending}`;
+    if (!r.results.length) { say(r.calls_pending ? "Calls are still being indexed for search. Try again in a minute." : "No calls to search yet."); return; }
+    tbody.replaceChildren(...r.results.map(h => {
+      const href = `#/calls/${h.call_id}?line=${h.idx}`;
+      return el("tr", { class: "clickable", onclick: e => { if (!e.target.closest("a")) location.hash = href; } },
+        el("td", {}, el("a", { class: "callname", href }, h.call_name || short(h.call_id)), el("span", { class: "sub" }, fmtTime(h.start_s))),
+        el("td", {}, el("strong", {}, `${h.speaker}: `), h.text));
+    }));
+  }
 
   async function loadCalls() {
     clearTimeout(pollTimer);
+    thead.replaceChildren(el("tr", {}, el("th", {}, "Call"), el("th", {}, "Status"), el("th", { class: "hide-sm" }, "Length"),
+      el("th", {}, "Insights"), el("th", { class: "hide-sm" }, "Added")));
     const params = new URLSearchParams({ limit: "200" });
     if (search.value.trim()) params.set("q", search.value.trim());
     if (statusFilter.value) params.set("status", statusFilter.value);
@@ -445,13 +483,13 @@ async function showCalls() {
     }));
     if (calls.some(c => c.status === "queued" || c.status === "processing")) pollTimer = setTimeout(loadCalls, 4000);
   }
-  loadCalls();
+  setMode();
 }
 
 // ---------------------------------------------------------------- one call
 const GROUPS = [["Needs attention", ["high"]], ["Watch", ["medium"]], ["Notes", ["low", "info"]]];
 
-async function showCall(id) {
+async function showCall(id, line = null) {
   clearTimeout(pollTimer);
   setNav("calls");
   let call;
@@ -509,11 +547,11 @@ async function showCall(id) {
       return row;
     }));
 
-  function jump(segId, start) {
+  function jump(segId, start, play = true) {
     rows.forEach(r => r.classList.remove("hit"));
     const row = rows.get(segId);
     if (row) { row.classList.add("hit"); row.scrollIntoView({ block: "center", behavior: "smooth" }); }
-    if (audio) { audio.currentTime = start; audio.play().catch(() => {}); }
+    if (audio) { audio.currentTime = start; if (play) audio.play().catch(() => {}); }
   }
 
   const share = Object.entries(call.talk_share || {});
@@ -574,6 +612,8 @@ async function showCall(id) {
         call.insights.length ? el("div", {}, ...groups) : el("p", { class: "empty" }, "No insights for this call.")),
       el("section", { class: "panel", "aria-label": "Recording and transcript" },
         audio ? el("div", { class: "player" }, audio) : null, transcript)));
+  const hit = call.segments.find(s => s.id === line);
+  if (hit) jump(hit.id, hit.start_s, false);  // opened from a search result
 }
 
 // ---------------------------------------------------------------- trends
@@ -841,8 +881,8 @@ async function route() {
       return;
     }
   }
-  const m = location.hash.match(/^#\/calls\/([^/]+)$/);
-  if (m) showCall(decodeURIComponent(m[1]));
+  const m = location.hash.match(/^#\/calls\/([^/?]+)(?:\?line=(\d+))?$/);
+  if (m) showCall(decodeURIComponent(m[1]), m[2] == null ? null : Number(m[2]));
   else if (location.hash === "#/audit") showAudit();
   else if (location.hash === "#/trends") showTrends();
   else if (location.hash === "#/settings") showSettings();

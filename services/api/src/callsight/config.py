@@ -37,6 +37,7 @@ class Settings:
     retention_days: int = 0  # delete calls (and recordings) older than this; 0 = keep forever
     analyzers: tuple[str, ...] = ()  # empty = pipeline.DEFAULT_ANALYZERS (or DEFAULT_LLM_ANALYZERS with an LLM)
     whisper_model: str = "small"  # faster-whisper size: tiny, base, small, medium, large-v3
+    embed_model: str = ""  # Ollama embedding model for semantic search, e.g. mxbai-embed-large; empty = off
 
     @classmethod
     def from_env(cls, env: Mapping[str, str] | None = None) -> "Settings":
@@ -64,4 +65,5 @@ class Settings:
             retention_days=int(env.get("CALLSIGHT_RETENTION_DAYS") or 0),
             analyzers=_csv(env.get("CALLSIGHT_ANALYZERS")),
             whisper_model=env.get("CALLSIGHT_WHISPER_MODEL", cls.whisper_model),
+            embed_model=env.get("CALLSIGHT_EMBED_MODEL", "").strip(),
         )

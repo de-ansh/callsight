@@ -348,6 +348,67 @@ def export_rows(conn: psycopg.Connection, org_id: UUID, query: str | None = None
     ).fetchall()
 
 
+_MISSING_EMBEDDING = (
+    "EXISTS (SELECT 1 FROM segments s WHERE s.call_id = c.id AND NOT EXISTS ("
+    "SELECT 1 FROM segment_embeddings e WHERE e.call_id = s.call_id AND e.idx = s.idx AND e.model = %s))"
+)
+
+
+def call_to_embed(conn: psycopg.Connection, model: str) -> UUID | None:
+    """A finished call with lines not yet embedded by `model`, newest first."""
+    row = conn.execute(
+        f"SELECT c.id FROM calls c WHERE c.status = 'done' AND {_MISSING_EMBEDDING}"
+        " ORDER BY c.created_at DESC, c.id LIMIT 1",
+        (model,),
+    ).fetchone()
+    return row["id"] if row else None
+
+
+def segments_to_embed(conn: psycopg.Connection, call_id: UUID, model: str) -> list[dict[str, Any]]:
+    return conn.execute(
+        "SELECT s.idx, s.text FROM segments s WHERE s.call_id = %s AND NOT EXISTS ("
+        " SELECT 1 FROM segment_embeddings e WHERE e.call_id = s.call_id AND e.idx = s.idx AND e.model = %s)"
+        " ORDER BY s.idx",
+        (call_id, model),
+    ).fetchall()
+
+
+def _vector(values: list[float]) -> str:
+    return "[" + ",".join(map(repr, values)) + "]"  # pgvector's text form; avoids a client dependency
+
+
+def save_embeddings(conn: psycopg.Connection, call_id: UUID, model: str, rows: list[tuple[int, list[float]]]) -> None:
+    # The segment may have been replaced (re-analysis) or deleted meanwhile: insert only where it still
+    # exists, and let a second worker that embedded the same call win the conflict.
+    with conn.cursor() as cur:
+        cur.executemany(
+            "INSERT INTO segment_embeddings (call_id, idx, model, embedding)"
+            " SELECT call_id, idx, %s, %s::vector FROM segments WHERE call_id = %s AND idx = %s"
+            " ON CONFLICT DO NOTHING",
+            [(model, _vector(vec), call_id, idx) for idx, vec in rows],
+        )
+
+
+def semantic_search(conn: psycopg.Connection, org_id: UUID, model: str, query_vector: list[float], limit: int
+                    ) -> dict[str, Any]:
+    """Transcript lines closest in meaning to the query, plus how many calls are still being indexed."""
+    vec = _vector(query_vector)
+    # shortcut: exact scan of the org's vectors (fine to ~100k lines); add an HNSW index on a
+    # fixed-size column once one model is settled and orgs grow past that.
+    results = conn.execute(
+        "SELECT s.call_id, c.external_id AS call_name, c.created_at, s.idx, s.start_s, s.speaker, s.text,"
+        " 1 - (e.embedding <=> %s::vector) AS score"
+        " FROM segment_embeddings e JOIN segments s USING (call_id, idx) JOIN calls c ON c.id = s.call_id"
+        " WHERE c.org_id = %s AND e.model = %s ORDER BY e.embedding <=> %s::vector LIMIT %s",
+        (vec, org_id, model, vec, limit),
+    ).fetchall()
+    pending = conn.execute(
+        f"SELECT count(*) AS n FROM calls c WHERE c.org_id = %s AND c.status = 'done' AND {_MISSING_EMBEDDING}",
+        (org_id, model),
+    ).fetchone()["n"]
+    return {"results": results, "calls_pending": pending}
+
+
 def list_calls(
     conn: psycopg.Connection, org_id: UUID, limit: int, offset: int,
     query: str | None = None, status: str | None = None,

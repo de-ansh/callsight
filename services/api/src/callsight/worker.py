@@ -17,12 +17,15 @@ from . import recordings, remote, retention, store
 from .config import Settings
 from .models import Transcript
 from .migrate import migrate
+from .providers.ollama_llm import ollama_embed
 from .registry import create, load_builtins
 from .service import analyze_transcript
 
 log = logging.getLogger("callsight.worker")
 IDLE_SLEEP_S = 2.0
 PURGE_EVERY_S = 3600
+EMBED_BATCH = 64
+EMBED_RETRY_S = 60  # wait this long after the embedding server fails before trying again
 
 
 def process_one(settings: Settings, asr) -> bool:
@@ -53,6 +56,24 @@ def process_one(settings: Settings, asr) -> bool:
         log.exception("call %s failed", call_id)
         with store.connect(settings.database_url) as conn:
             store.fail_job(conn, call_id, f"{type(exc).__name__}: {exc}")
+    return True
+
+
+def embed_one(settings: Settings) -> bool:
+    """Embed the lines of one call that semantic search can't see yet; False when there is none."""
+    model = settings.embed_model
+    with store.connect(settings.database_url) as conn:
+        call_id = store.call_to_embed(conn, model)
+        rows = store.segments_to_embed(conn, call_id, model) if call_id else []
+    if not rows:
+        return False
+    for start in range(0, len(rows), EMBED_BATCH):
+        batch = rows[start:start + EMBED_BATCH]
+        texts = [r["text"] or "-" for r in batch]  # an empty line must not stall the queue
+        vectors = ollama_embed(settings.ollama_url, model, texts)
+        with store.connect(settings.database_url) as conn:
+            store.save_embeddings(conn, call_id, model, [(r["idx"], v) for r, v in zip(batch, vectors)])
+    log.info("call %s: embedded %d lines for search", call_id, len(rows))
     return True
 
 
@@ -93,7 +114,9 @@ def main() -> None:
     if settings.diarization:
         log.info("speaker diarization for mono recordings: %s (%s)", settings.diarization, settings.diarization_model)
     log.info("worker ready")
-    next_purge = 0.0
+    if settings.embed_model:
+        log.info("semantic search: embedding transcripts with '%s' via %s", settings.embed_model, settings.ollama_url)
+    next_purge = next_embed = 0.0
     while True:
         if time.monotonic() >= next_purge:
             try:
@@ -101,8 +124,16 @@ def main() -> None:
             except Exception:  # a storage hiccup must not stop transcription
                 log.exception("retention purge failed; retrying next round")
             next_purge = time.monotonic() + PURGE_EVERY_S
-        if not process_one(settings, asr):
-            time.sleep(IDLE_SLEEP_S)
+        if process_one(settings, asr):
+            continue
+        if settings.embed_model and time.monotonic() >= next_embed:  # transcription goes first
+            try:
+                if embed_one(settings):
+                    continue
+            except Exception:  # Ollama down or the model not pulled: transcription must carry on
+                log.exception("embedding for search failed; retrying in %ds", EMBED_RETRY_S)
+                next_embed = time.monotonic() + EMBED_RETRY_S
+        time.sleep(IDLE_SLEEP_S)
 
 
 if __name__ == "__main__":
