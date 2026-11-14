@@ -6,16 +6,20 @@ mentions, no next step, rep talking too much), with every insight linked to the 
 transcript lines that support it.
 
 > **Status: v0.7.0, early.** Text and audio calls, rule-based and local-LLM analysis, a web
-> UI, a webhook connector, API keys with per-organization separation, single sign-on, and an
-> audit log all work and are tested. Speaker separation for mono recordings is opt-in (see below). Not yet: telephony/meeting
-> connectors. Run it behind a reverse proxy for TLS and rate limiting. See the
-> [roadmap](docs/roadmap.md).
+> UI, a webhook connector, API keys with per-organization separation, single sign-on with admin
+> roles, and an audit log all work and are tested. Speaker separation for mono recordings and
+> search by meaning are opt-in (see below). Not yet: telephony/meeting connectors. It has only
+> been measured on synthetic calls so far. Run it behind a reverse proxy for TLS and rate
+> limiting. See the [roadmap](docs/roadmap.md).
+
+![A call in Callsight: summary, talk share, a flagged pricing concern linked to the transcript line it came from](docs/images/call.png)
 
 ## Why
 
 Conversation-intelligence tools are sold per seat and keep your recordings on someone
 else's servers. The software around the models is the replaceable part. Callsight aims
-to be a self-hosted alternative where you choose the models (local or API) and keep the data.
+to be a self-hosted alternative where you choose the models and keep the data. Today that means
+local models through Ollama; nothing leaves your servers.
 
 *Pricing and existing open-source projects have been surveyed; whether buyers want this has
 not been validated with users yet ([interview kit](docs/interview-kit.md)).*
