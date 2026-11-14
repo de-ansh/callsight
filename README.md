@@ -36,7 +36,7 @@ not been validated with users yet ([interview kit](docs/interview-kit.md)).*
 | Webhook connector (`POST /v1/orgs/{org}/connectors/generic/webhook`, HMAC-signed per org; transcript or https recording URL) | Working, tested (SSRF guard, signatures, worker fetch) |
 | API keys, organizations (each key sees only its org's calls), audit log (`GET /v1/audit`) | Working, tested including cross-org access attempts |
 | LLM analyzer `llm_insights` (objection types incl. authority/need, commitments, next step, sentiment shifts) with an eval harness | Working; see [evals/README.md](evals/README.md) for measured precision/recall |
-| Single sign-on (any OIDC provider), allowed email domains, read-only access overview | Working, tested; sign-in checked end to end in a browser against Dex, a real OIDC server |
+| Single sign-on (any OIDC provider), allowed email domains, admin roles (manage keys, domains and admins in the UI) | Working, tested; sign-in checked end to end in a browser against Dex, a real OIDC server |
 | Trends dashboard, bulk re-analysis, CSV export, printable summary, rule-based recap | Working, tested |
 | Mono-recording speaker separation (pyannote, opt-in) | Working; checked on synthetic calls only, in the venv and in the Docker image (see below) |
 | Telephony/meeting connectors | Not started |
