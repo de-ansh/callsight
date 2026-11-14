@@ -34,6 +34,7 @@ from .config import Settings
 from .models import Transcript
 from .connectors import Unauthorized
 from .migrate import migrate
+from .providers.ollama_llm import ollama_embed
 from .recordings import AUDIO_TYPES
 from .registry import available, create, load_builtins
 from .service import analyze_text_with_transcript, analyze_transcript
@@ -171,7 +172,8 @@ def ui() -> FileResponse:
 @app.get("/auth/me")
 def whoami(principal: Principal = Depends(require_key)) -> dict:
     """Who this request is authenticated as: 'user:<email>' for sign-in, 'key:<name>' for API keys."""
-    return {"actor": principal.actor, "org_id": principal.org_id, "admin": principal.admin}
+    return {"actor": principal.actor, "org_id": principal.org_id, "admin": principal.admin,
+            "semantic_search": bool(Settings.from_env().embed_model)}
 
 
 @app.get("/health")
@@ -515,6 +517,25 @@ def put_settings(body: OrgSettings, principal: Principal = Depends(require_key))
         store.set_org_competitors(conn, principal.org_id, competitors)
         store.audit(conn, principal.org_id, principal.actor, "settings.update", None, {"competitors": competitors})
     return OrgSettings(competitors=competitors)
+
+
+@app.get("/v1/search")
+def search(
+    q: str = Query(..., min_length=1, max_length=200, description="What to look for, in plain words"),
+    limit: int = Query(20, ge=1, le=100),
+    principal: Principal = Depends(require_key),
+) -> dict:
+    """Transcript lines across this organization's calls closest in meaning to `q`, best first."""
+    settings = Settings.from_env()
+    if not settings.embed_model:
+        raise HTTPException(status_code=503, detail="Semantic search is off: set CALLSIGHT_EMBED_MODEL")
+    try:
+        vector = ollama_embed(settings.ollama_url, settings.embed_model, [q.strip()], timeout=30)[0]
+    except (OSError, ValueError, KeyError) as exc:  # urllib errors are OSErrors
+        log.warning("search embedding failed: %s", exc)
+        raise HTTPException(status_code=502, detail="The embedding server didn't answer; try again shortly") from exc
+    with store.connect(settings.database_url) as conn:
+        return store.semantic_search(conn, principal.org_id, settings.embed_model, vector, limit)
 
 
 @app.get("/v1/trends")

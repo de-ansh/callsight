@@ -36,3 +36,17 @@ class OllamaLLM:
         )
         with urllib.request.urlopen(request, timeout=self.timeout) as response:
             return json.loads(response.read().decode())["response"]
+
+
+def ollama_embed(base_url: str, model: str, texts: list[str], timeout: float = 120.0) -> list[list[float]]:
+    """One vector per text, from Ollama's /api/embed (e.g. model "mxbai-embed-large")."""
+    request = urllib.request.Request(
+        f"{base_url.rstrip('/')}/api/embed",
+        data=json.dumps({"model": model, "input": texts}).encode(),
+        headers={"Content-Type": "application/json"},
+    )
+    with urllib.request.urlopen(request, timeout=timeout) as response:
+        vectors = json.loads(response.read().decode())["embeddings"]
+    if len(vectors) != len(texts):
+        raise ValueError(f"Ollama returned {len(vectors)} embeddings for {len(texts)} texts")
+    return vectors

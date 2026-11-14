@@ -213,7 +213,8 @@ def test_admin_key_creates_and_revokes_keys(provider, domain):
     made = boss.post("/v1/keys", json={"name": " ci-bot ", "admin": False}).json()
     assert made["name"] == "ci-bot" and made["key"].startswith("cs_")
     bot = _as(made["key"])
-    assert bot.get("/auth/me").json() == {"actor": "key:ci-bot", "org_id": str(org), "admin": False}
+    assert bot.get("/auth/me").json() == {"actor": "key:ci-bot", "org_id": str(org), "admin": False,
+                                          "semantic_search": False}
 
     access = boss.get("/v1/access")
     assert made["key"] not in access.text and auth.hash_key(made["key"]) not in access.text

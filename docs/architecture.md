@@ -39,8 +39,10 @@ belongs to an organization, and every API query filters by it.
 ## Data model (`services/api/src/callsight/migrations/`)
 
 `calls` 1—n `segments` (ordered turns) and 1—n `insights` (kind, severity, title, detail,
-evidence as JSON). The pgvector extension is enabled for planned semantic search; no
-embedding column is defined yet because the dimension depends on the chosen model.
+evidence as JSON). `segment_embeddings` holds one pgvector embedding per segment per model
+(no fixed dimension, so switching models needs no migration). Rows cascade with their segment;
+the worker fills in missing ones when it has no audio to transcribe, and `GET /v1/search`
+ranks an org's lines by cosine distance with an exact scan (no ANN index yet).
 
 Schema changes are numbered SQL files in that folder (`0001_initial.sql`, ...). The API and the
 worker apply any pending ones at startup, under a Postgres advisory lock, and record them in
