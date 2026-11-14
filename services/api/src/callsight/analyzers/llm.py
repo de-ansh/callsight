@@ -29,7 +29,8 @@ OBJECTION_TYPES = {
     "authority": "Decision needs someone else's approval",
 }
 # The prompt still asks for "need" objections (changing the prompt shifts the small model's other
-# answers), but they are not reported: precision was 11-25% on the 30-call eval set.
+# answers), but they are not reported: precision was 11-25% with llama3.2:3b and 17% with
+# llama3.1 8B on the 30-call eval set.
 MAX_PROMPT_LINES = 400
 
 # No concrete example values: small models copy example line numbers and booleans into their

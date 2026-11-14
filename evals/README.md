@@ -54,7 +54,36 @@ overfitting. Treat these numbers as a regression check, not a benchmark. Replace
 with labelled real calls (calls 11–30 were added after the rules below were first written; 1–10
 are the original seed set).
 
-### Rules vs LLM vs the hybrid default, on all 30 calls
+### The hybrid default with llama3.1 8B (the default model) vs llama3.2:3b, on all 30 calls
+
+Both run on the same code on 2026-11-14, Ollama in Docker on 4 CPUs, temperature 0, JSON mode.
+The model only decides pricing, timing and authority objections; the other rows come from the
+rules and are the same for both.
+
+| Kind | Hybrid, llama3.2:3b | Hybrid, llama3.1:8b |
+|---|---|---|
+| pricing_objection | 73% / 80% | **88%** / 70% |
+| timing_objection | 67% / 44% | **80% / 89%** |
+| authority_objection | 60% / 75% | **75%** / 75% |
+| competitor_mention, action_item, no_next_step | as the rules table | as the rules table |
+
+- **Timing recall doubles** (4 → 8 of 9 labelled lines). The 3B model missed most timing
+  objections phrased without "later" or "next quarter".
+- The 8B misses read as judgement calls: it skipped "any discount if we sign before the end of
+  the month?" and "not convinced the return justifies that kind of spend", and flagged a
+  nonprofit-discount question. Two of its timing "false positives" ("Maybe later… feels like
+  overkill", "I'll reach out when things calm down") are arguably unlabelled timing objections.
+- **Stable:** a second 8B run (LLM only) gave identical pricing and timing results, line for line;
+  authority differed by one line. The 3B model is not: the same code scored pricing precision
+  67% and 73%, timing 80% and 67%, across runs on different days.
+- **"Need" objections stay unreported:** 8B scored 17% precision / 50% recall (2 right, 10 wrong),
+  no better than the 3B model.
+- **Cost:** about 22 s per model request on 4 CPUs (two requests per call), against about 10 s
+  for 3B. It needs about 6 GB of RAM; Docker Desktop's default limit is too low.
+
+Use the 8B default where the hardware allows; llama3.2:3b is the fallback for small machines.
+
+### Rules vs LLM vs the hybrid default, on all 30 calls (llama3.2:3b, earlier runs)
 
 llama3.2:3b in Docker on CPU. "Hybrid" is the default when an LLM is configured
 (`pipeline.DEFAULT_LLM_ANALYZERS`): rules for talk ratio, competitors, commitments and the next
@@ -91,8 +120,8 @@ scored 11–25% precision across runs, so they are no longer reported.
 | no_next_step | 43% / 75% | **100% / 100%** |
 
 LLM run: Ollama in Docker on CPU (Apple silicon), temperature 0, JSON mode, about 30 s per call.
-llama3.2:3b, not the default llama3.1 8B, because the 8B model did not fit in the local Docker
-disk; rerun with a larger model before drawing firm conclusions.
+llama3.2:3b, because the 8B model did not fit in the local Docker disk at the time; the 8B
+results are in the first LLM table above.
 
 **Reading it:** the model is better at objections phrased without keywords and at telling
 whether a next step was really agreed; the rules are better at rep commitments and exact
