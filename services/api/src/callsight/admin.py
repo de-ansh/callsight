@@ -109,7 +109,7 @@ def _demo(conn, settings: Settings) -> int:
         loaded += 1
     print(f"Loaded {loaded} example call(s) into the 'demo' organization.")
     print(f"API key: {key}")
-    print("Open http://localhost:8000 and paste the key. (Shown once; run demo again for a new key.)")
+    print(f"Open {Settings.from_env().public_url} and paste the key. (Shown once; run demo again for a new key.)")
     return 0
 
 
