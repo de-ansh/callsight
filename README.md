@@ -22,7 +22,7 @@ to be a self-hosted alternative where you choose the models and keep the data. T
 local models through Ollama; nothing leaves your servers.
 
 *Pricing and existing open-source projects have been surveyed; whether buyers want this has
-not been validated with users yet ([interview kit](docs/interview-kit.md)).*
+not been validated with users yet.*
 
 ## What works today
 
@@ -269,4 +269,4 @@ or add it to `DEFAULT_ANALYZERS` in `pipeline.py`.
 ## License
 
 [Apache License 2.0](LICENSE). Third-party models you download (Whisper weights, Ollama
-models) keep their own licenses. Why Apache: [docs/license-decision.md](docs/license-decision.md).
+models) keep their own licenses.
