@@ -1,19 +1,39 @@
 name: CI
 
+# Pull requests only: a push to main re-ran what the PR had just tested (Run workflow re-runs by hand).
 on:
-  push:
-    branches: [main]
   pull_request:
+  workflow_dispatch:
 
 permissions:
   contents: read
 
-concurrency:
+concurrency:  # a new push to the PR cancels the run still going for the previous one
   group: ci-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+  cancel-in-progress: true
 
 jobs:
+  # test and docker-build are required checks, so a docs-only PR skips them (skipped counts as passed)
+  # rather than skipping the whole workflow, which would leave the checks pending forever.
+  changes:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 5
+    outputs:
+      code: ${{ steps.diff.outputs.code }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - id: diff
+        run: |
+          if [ "${{ github.event_name }}" != "pull_request" ]; then echo "code=true" >> "$GITHUB_OUTPUT"; exit 0; fi
+          changed=$(git diff --name-only "${{ github.event.pull_request.base.sha }}" HEAD)
+          if echo "$changed" | grep -vE '(\.md$|^docs/|^LICENSE$|^NOTICE$)' | grep -q .; then code=true; else code=false; fi
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+
   test:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 15
     defaults:
@@ -49,6 +69,8 @@ jobs:
         run: scripts/test-services.sh down
 
   docker-build:
+    needs: changes
+    if: needs.changes.outputs.code == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 20
     steps:
